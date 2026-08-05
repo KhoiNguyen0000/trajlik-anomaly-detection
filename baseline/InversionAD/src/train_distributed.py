@@ -90,11 +90,10 @@ def main(config):
             project = os.environ.get("WANDB_PROJECT")
             if project is None:
                 raise ValueError("Please set the WANDB_PROJECT environment variable.")
-            entity = os.environ.get("WANDB_ENTITY")  # optional
-            init_kwargs = dict(project=project, config=config)
-            if entity:
-                init_kwargs["entity"] = entity
-            wandb.init(**init_kwargs)
+            entity = os.environ.get("WANDB_ENTITY")
+            if entity is None:
+                raise ValueError("Please set the WANDB_ENTITY environment variable.")
+            wandb.init(project=project, entity=entity, config=config)
     # set seed
     seed = config['meta']['seed'] + rank
     torch.manual_seed(seed)
