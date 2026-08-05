@@ -67,7 +67,7 @@ def process_main(rank, fname, world_size, devices, task, port, args):
         train_dist_main(params)
     elif task == "train":
         from src.train import main as train_main
-        train_main(params, args)
+        train_main(params)
     elif task == "test":
         from src.evaluate import main as test_main
         test_main(params, args)

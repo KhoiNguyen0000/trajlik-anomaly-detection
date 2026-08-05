@@ -21,20 +21,16 @@ from einops import rearrange
 from sklearn.metrics import roc_curve, roc_auc_score
 
 import wandb
-# Check WANDB_API_KEY directly from env or load from .env file
-use_wandb = False
-if os.getenv("WANDB_API_KEY") is not None:
-    use_wandb = True
-    wandb.login(key=os.getenv("WANDB_API_KEY"))
-else:
-    try: 
-        from dotenv import load_dotenv
-        load_dotenv()
-        if os.getenv("WANDB_API_KEY") is not None:
-            use_wandb = True
-            wandb.login(key=os.getenv("WANDB_API_KEY"))
-    except ImportError:
-        pass
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+try: 
+    load_dotenv()
+    use_wandb = (os.getenv("WANDB_API_KEY") is not None)
+    if use_wandb:
+        wandb.login(key=os.getenv("WANDB_API_KEY"))
+except ImportError:
+    pass
 
 def parse_args():
     parser = argparse.ArgumentParser(description="InvAD Training")
@@ -55,19 +51,18 @@ def convert2image(x):
     else:
         return x.cpu().numpy()
     
-def main(config, args):
+def main(config):
     pprint(config)
     
     if use_wandb:
         # create wandb project
-        project = os.environ.get("WANDB_PROJECT", "InversionAD")
-        entity = os.environ.get("WANDB_ENTITY", None)
-        
-        init_kwargs = {"project": project, "config": config}
-        if entity is not None:
-            init_kwargs["entity"] = entity
-            
-        wandb.init(**init_kwargs)
+        project = os.environ.get("WANDB_PROJECT")
+        if project is None:
+            raise ValueError("Please set the WANDB_PROJECT environment variable.")
+        entity = os.environ.get("WANDB_ENTITY")
+        if entity is None:
+            raise ValueError("Please set the WANDB_ENTITY environment variable.")
+        wandb.init(project=project, entity=entity, config=config)
     
     # set seed
     seed = config['meta']['seed']
@@ -174,12 +169,8 @@ def main(config, args):
                 epoch + 1,
                 config["evaluation"]["eval_step"],
                 device,
-                args
             )
-            cat = config["data"]["category"]
-            if cat not in metrics_dict and "unknown" in metrics_dict:
-                cat = "unknown"
-            current_mad = metrics_dict[cat]["mAD"]
+            current_mad = metrics_dict[config["data"]["category"]]["mAD"]
             
             if current_mad > best_mad:
                 best_mad = current_mad

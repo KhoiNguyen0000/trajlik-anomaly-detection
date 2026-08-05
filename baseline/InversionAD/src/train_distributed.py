@@ -138,8 +138,8 @@ def main(config):
         sampler=anom_sampler,
         batch_size=batch_size//world_size,
         pin_memory=True,
-        num_workers=4,
-        persistent_workers=True,
+        num_workers=2,
+        persistent_workers=False,
         drop_last=False,
     ) for anom_ds, anom_sampler in zip(anom_dataset.datasets, anom_samplers)]
     normal_loaders = [torch.utils.data.DataLoader(
@@ -147,8 +147,8 @@ def main(config):
         sampler=normal_sampler,
         batch_size=batch_size//world_size,
         pin_memory=True,
-        num_workers=4,
-        persistent_workers=True,
+        num_workers=2,
+        persistent_workers=False,
         drop_last=False,
     ) for normal_ds, normal_sampler in zip(normal_dataset.datasets, normal_samplers)]
     
