@@ -29,7 +29,7 @@ backbone:
 data:
   batch_size: 8
   category: all
-  data_root: data/mvtec_ad
+  data_root: /kaggle/input/datasets/ipythonx/mvtec-ad
   dataset_name: mvtec_ad_all
   img_size: 256
   multi_category: false
@@ -52,7 +52,7 @@ logging:
   log_interval: 10
   save_interval: 300
   save_images: false
-  save_dir: 'results/exp_dit_gigant_ad/all'
+  save_dir: 'results/exp_dit_base_ad/all'
 evaluation:
   eval_interval: 25
   eval_step: 3
