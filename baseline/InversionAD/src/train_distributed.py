@@ -82,7 +82,11 @@ def main(config):
             load_dotenv()
             use_wandb = (os.getenv("WANDB_API_KEY") is not None)
             if use_wandb:
-                wandb.login(key=os.getenv("WANDB_API_KEY"))
+                try:
+                    wandb.login(key=os.getenv("WANDB_API_KEY"))
+                except ValueError as e:
+                    logger.error(f"Wandb login failed: {e}")
+                    use_wandb = False
         except ImportError:
             pass
         if use_wandb:
