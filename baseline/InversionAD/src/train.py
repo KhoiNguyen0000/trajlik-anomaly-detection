@@ -59,9 +59,7 @@ def main(config):
         project = os.environ.get("WANDB_PROJECT")
         if project is None:
             raise ValueError("Please set the WANDB_PROJECT environment variable.")
-        entity = os.environ.get("WANDB_ENTITY")
-        if entity is None:
-            raise ValueError("Please set the WANDB_ENTITY environment variable.")
+        entity = os.environ.get("WANDB_ENTITY")  # optional, wandb uses default account if not set
         wandb.init(project=project, entity=entity, config=config)
     
     # set seed
