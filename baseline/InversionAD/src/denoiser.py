@@ -249,7 +249,15 @@ class Denoiser(nn.Module):
         )
         return out
 
-    def ddim_reverse_sample(self, x_t: Tensor, t: Tensor, cls_label=None, cfg=1.0, eta=0.0) -> Tensor:
+    def ddim_reverse_sample(
+        self,
+        x_t: Tensor,
+        t: Tensor,
+        cls_label=None,
+        cfg=1.0,
+        eta=0.0,
+        return_intermediates=False,
+    ):
         assert torch.where(t == t[0], 1, 0).sum() == t.shape[0], "All timesteps must be the same"
         
         cls_embed = None
@@ -267,8 +275,18 @@ class Denoiser(nn.Module):
         
         indices = list(range(t[0].item(), int(self.num_sampling_steps)))
         # logger.info(f"NFE: {len(indices)}")
+        x_t_original = x_t.clone()  # Save z_0 (before iteration), new line
+        z_seq = [] # Added
+        eps_seq = [] # Added
+        delta_z_seq = [] # Added
+        
         for i in indices:
-            t = torch.tensor([i] * x_t.shape[0]).to(x_t.device)
+            t = torch.full(
+                (x_t.shape[0],),
+                i,
+                device=x_t.device,
+                dtype=torch.long,
+            )
             out = self.sample_diffusion.ddim_reverse_sample(
                 sample_fn,
                 x_t,
@@ -278,6 +296,16 @@ class Denoiser(nn.Module):
                 eta=eta
             )
             x_t = out["sample"]
+            
+            if return_intermediates:
+                z_seq.append(x_t)
+                eps_seq.append(out["eps"])
+                prev = z_seq[-2] if len(z_seq) >= 2 else x_t_original
+                delta_z_seq.append(x_t - prev)
+        
+        if return_intermediates:
+            return x_t, z_seq, eps_seq, delta_z_seq
+
         return x_t
     
     def p_sample(self, x_t: Tensor, t: Tensor, cls_label=None, cfg=1.0, return_noise=False) -> Tensor:
