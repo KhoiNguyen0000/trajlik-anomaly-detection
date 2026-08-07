@@ -3,9 +3,8 @@ diffusion:
   num_classes: 15
   target_channels: 3
   z_channels: 768
-  depth: 12
-  width: 768
-  num_heads: 12
+  depth: 8
+  width: 1024
   num_sampling_steps: '100'
   ema_decay: 0.999
   learn_sigma: false

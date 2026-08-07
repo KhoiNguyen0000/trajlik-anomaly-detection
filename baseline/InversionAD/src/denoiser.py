@@ -275,8 +275,10 @@ class Denoiser(nn.Module):
         
         indices = list(range(t[0].item(), int(self.num_sampling_steps)))
         # logger.info(f"NFE: {len(indices)}")
-        z_seq = []
-        eps_seq = []
+        x_t_original = x_t.clone()  # Save z_0 (before iteration), new line
+        z_seq = [] # Added
+        eps_seq = [] # Added
+        delta_z_seq = [] # Added
         
         for i in indices:
             t = torch.full(
@@ -298,9 +300,11 @@ class Denoiser(nn.Module):
             if return_intermediates:
                 z_seq.append(x_t)
                 eps_seq.append(out["eps"])
+                prev = z_seq[-2] if len(z_seq) >= 2 else x_t_original
+                delta_z_seq.append(x_t - prev)
         
         if return_intermediates:
-            return x_t, z_seq, eps_seq
+            return x_t, z_seq, eps_seq, delta_z_seq
 
         return x_t
     

@@ -36,7 +36,7 @@ class InversionADModule(nn.Module):
             dtype=torch.bfloat16,
             enabled=images.is_cuda,
         ):
-            final_latent, z_seq, eps_seq = (
+            final_latent, z_seq, eps_seq, delta_z_seq = (
                 self.eval_denoiser.ddim_reverse_sample(
                     z_0,
                     start_t,
@@ -58,5 +58,6 @@ class InversionADModule(nn.Module):
             "z_0": z_0,
             "z_seq": z_seq,
             "eps_seq": eps_seq,
+            "delta_z_seq": delta_z_seq,
             "a_end": a_end,
         }
