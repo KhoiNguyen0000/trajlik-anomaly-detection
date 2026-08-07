@@ -9,8 +9,12 @@ from pathlib import Path
 
 import torch
 import yaml
+from debugpy.launcher import output
+from jupyter_lsp import non_blocking
+from sympy.integrals.meijerint_doc import category
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from webencodings import labels
 
 from src import diffusion
 from src.backbones import get_backbone, get_backbone_feature_shape
@@ -138,9 +142,138 @@ def cache_trajectories(config: dict, args):
     feature_shape = get_backbone_feature_shape(
         model_type=config["backbone"]["model_type"]
     )
+    in_channels = feature_shape[0]
+
+    # denoiser
+    denoiser = get_denoiser(
+        **diffusion_config,
+        input_shape = feature_shape,
+    ).to(device).eval()
+
+    #feature extractor
+    feature_extractor = get_backbone(
+        **config["backbone"],
+    ).to(device).eval()
+
+    checkpoint_path = load_checkpoint(
+        denoiser,
+        Path(args.save_dir),
+        args.use_ema_model,
+    )
+
+    storage_dtype = resolve_storage_dtype(
+        args.storage_dtype
+    )
+
+    projector = TrajectoryProjector(
+        in_channels=in_channels,
+        proj_dim=args.proj_dim,
+        projection=args.projection,
+        storage_dtype=storage_dtype
+    ).to(device).eval()
+
+    num_cached = 0
+
+    for batch in tqdm(loader, desc="Caching trajectories"):
+        images = batch["samples"].to(
+            device,
+            non_blocking=True,
+        )
+
+        labels = batch["clslabels"].to(
+            device,
+            non_blocking=True,
+        )
+
+        # Backbone's type still fp32
+        z_0, _ = feature_extractor(images)
+
+        start_t = torch.zeros(
+            z_0.shape[0],
+            dtype=torch.long,
+            device= device,
+        )
+
+        with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
+            _,z_seq,eps_seq, delta_z_seq = (
+                denoiser.ddim_reverse_sample(
+                    z_0,
+                    start_t,
+                    labels,
+                    eta=0.0,
+                    return_intermediates=True,
+                )
+            )
+
+            projected = projector.project_and_compress(
+                z_0,
+                z_seq,
+                eps_seq,
+                delta_z_seq,
+            )
+
+        for index, source_path in enumerate(batch["filenames"]):
+            category = batch["clsnames"][index]
+            filename = sanitize_filename(source_path, category)
+
+            output = {
+                key: value[index].detach().cpu()
+                for key, value in projected.items()
+            }
+
+            output["source_path"] = source_path
+            output["category"] = category
+
+            torch.save(output, cache_dir / f"{filename}.pt")
+            num_cached += 1
+
+    if args.projection == "linear":
+        torch.save(
+            projector.state_dict(),
+            cache_dir / "projector.pt",
+        )
+
+    effective_channels = (
+        args.proj_dim
+        if args.projection == "linear"
+        else in_channels
+    )
+
+    metadata = {
+        "num_images": num_cached,
+        "num_steps": args.num_inversion_steps,
+        "in_channels": in_channels,
+        "output_channels": effective_channels,
+        "projection": args.projection,
+        "proj_dim": (
+            args.proj_dim
+            if args.projection == "linear"
+            else None
+        ),
+        "storage_dtype": args.storage_dtype,
+        "backbone": config["backbone"]["model_type"],
+        "dataset": dataset_config["dataset_name"],
+        "category": dataset_config.get("category"),
+    }
+
+    with open(cache_dir / "cache_meta.json", "w", encoding="utf-8") as file:
+        json.dump(metadata, file, indent=2)
+
+    logger.info("Cached %d images into %s", num_cached, cache_dir)
+
+def main():
+    args = parse_args()
+
+    with open(args.config, encoding="utf-8") as file:
+        config = yaml.load(file, Loader=yaml.FullLoader)
+
+    cache_trajectories(config, args)
 
 
+if __name__ == "__main__":
+    main()
 
+# HELPER CLASS
 def sanitize_filename(path: str, category: str) -> str:
     path = Path(path)
 
