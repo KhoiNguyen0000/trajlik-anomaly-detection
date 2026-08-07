@@ -270,9 +270,6 @@ def main():
     cache_trajectories(config, args)
 
 
-if __name__ == "__main__":
-    main()
-
 # HELPER CLASS
 def sanitize_filename(path: str, category: str) -> str:
     path = Path(path)
@@ -290,3 +287,6 @@ def resolve_storage_dtype(name: str) -> torch.dtype:
         "float16": torch.float16,
     }
     return mapping[name]
+
+if __name__ == "__main__":
+    main()
