@@ -81,7 +81,7 @@ class TrajectoryProjector(nn.Module):
             return tensor.to(dtype=self.storage_dtype)
 
         # Project z_0
-        z_0_proj = _project(z_0, self.proj_z).to(torch.float16)
+        z_0_proj = _project(z_0, self.proj_z)
 
         # Project sequences
         z_seq_proj = []

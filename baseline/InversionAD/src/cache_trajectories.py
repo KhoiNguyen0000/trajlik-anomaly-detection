@@ -9,14 +9,9 @@ from pathlib import Path
 
 import torch
 import yaml
-from debugpy.launcher import output
-from jupyter_lsp import non_blocking
-from sympy.integrals.meijerint_doc import category
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from webencodings import labels
 
-from src import diffusion
 from src.backbones import get_backbone, get_backbone_feature_shape
 from src.datasets import build_dataset
 from src.denoiser import get_denoiser
@@ -41,14 +36,14 @@ def parse_args():
     parser.add_argument(
         "--projection",
         choices=["none", "linear"],
-        default="linear",
+        default="none",
         help="none: keep original channel; linear: project down to proj_dim",
     )
     parser.add_argument(
         "--storage_dtype",
-        choices=["float16", "bfloat16"],
-        default="float16",
-        help="FP16 or BF16 for .pt files (saves space)",
+        choices=["float32", "float16"],
+        default="float32",
+        help="Storage dtype for cached .pt tensors",
     )
     return parser.parse_args()
 
