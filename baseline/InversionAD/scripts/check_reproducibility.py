@@ -1,8 +1,14 @@
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import yaml
+
+
+REPO_DIR = Path(__file__).parents[1]
+if str(REPO_DIR) not in sys.path:
+    sys.path.insert(0, str(REPO_DIR))
 
 from src.reproducibility import build_reproducibility_report, write_report
 
@@ -24,7 +30,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    repo_dir = Path(__file__).parents[1]
+    repo_dir = REPO_DIR
     with open(args.config, encoding="utf-8") as file:
         config = yaml.safe_load(file)
     report = build_reproducibility_report(
