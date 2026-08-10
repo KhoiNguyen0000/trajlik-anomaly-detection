@@ -63,9 +63,20 @@ class TrajectoryBatchTest(unittest.TestCase):
 
         self.assertEqual(tuple(canonical["states"].shape), (1, 4, 8, 3, 3))
 
-    def test_inconsistent_delta_is_rejected(self):
+    def test_separately_projected_delta_is_preserved(self):
         output = self.raw_cached_output()
         output["delta_z_seq"] = output["delta_z_seq"] + 1.0
+
+        canonical = build_trajectory_batch(output)
+
+        torch.testing.assert_close(
+            canonical["deltas"],
+            output["delta_z_seq"],
+        )
+
+    def test_wrong_delta_shape_is_rejected(self):
+        output = self.raw_cached_output()
+        output["delta_z_seq"] = output["delta_z_seq"][:, :-1]
 
         with self.assertRaisesRegex(ValueError, "inconsistent"):
             build_trajectory_batch(output)

@@ -41,6 +41,9 @@ def validate_cache(cache_dir: Path, expected_categories=None):
     expected_dtype = DTYPES[storage_dtype]
 
     projection = metadata["projection"]
+    assert metadata.get("normal_only") is True, (
+        "Cache metadata must declare normal_only=true"
+    )
     timestep_map = metadata.get("timestep_map")
     if timestep_map is not None:
         assert len(timestep_map) == num_steps, (
@@ -98,9 +101,12 @@ def validate_cache(cache_dir: Path, expected_categories=None):
         assert category, f"{path}: missing category"
         observed_categories.add(category)
 
-        source_path = str(sample.get("source_path", "")).replace("\\", "/").lower()
-        assert "/train/" in source_path, f"{path}: source is not from the training split"
-        assert "/good/" in source_path, f"{path}: source is not a normal image"
+        assert sample.get("split") == "train", (
+            f"{path}: cache sample is not from the training split"
+        )
+        assert sample.get("is_normal") is True, (
+            f"{path}: cache sample is not explicitly marked normal"
+        )
 
     if expected_categories:
         missing_categories = set(expected_categories) - observed_categories

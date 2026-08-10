@@ -3,6 +3,8 @@
 This script creates normal-image DDIM trajectories from a trained InvAD model
 for use by TrajLik-AD. It extracts EfficientNet features and caches `z_0`,
 `z_seq`, `eps_seq`, and `delta_z_seq` for each training image.
+Every sample is also marked with `split=train` and `is_normal=true`; the
+validator uses these fields instead of dataset-specific path conventions.
 
 ## Inputs
 
@@ -41,6 +43,8 @@ specific checkpoint, replace `--save_dir` and `--use_ema_model` with:
 ```
 
 The config architecture must match the checkpoint architecture.
+The metadata records the preprocessing mode and a SHA-256 fingerprint of the
+complete config so a cache cannot silently lose its provenance.
 
 ## Output
 

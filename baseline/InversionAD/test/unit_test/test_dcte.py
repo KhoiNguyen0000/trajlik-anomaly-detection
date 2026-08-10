@@ -97,6 +97,24 @@ class DCTETest(unittest.TestCase):
             (self.batch_size, 256, 64),
         )
 
+    def test_forward_uses_supplied_projected_displacement(self):
+        supplied_deltas = torch.randn(
+            self.batch_size,
+            3,
+            272,
+            16,
+            16,
+        )
+        module0_output = dict(self.module0_output)
+        module0_output["deltas"] = supplied_deltas
+
+        output = self.dcte(module0_output, mask=False)
+
+        expected = self.dcte.tokenizer.to_patch_sequence(
+            supplied_deltas
+        )
+        torch.testing.assert_close(output["delta_p"], expected)
+
     def test_forward_with_masking(self):
         output = self.dcte(
             self.module0_output,

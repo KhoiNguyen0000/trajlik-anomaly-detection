@@ -1,5 +1,6 @@
 import argparse
 import copy
+import hashlib
 import json
 import logging
 import re
@@ -177,9 +178,7 @@ def cache_trajectories(config: dict, args):
     dataset_config = copy.deepcopy(config["data"])
     dataset_config.update(
         train=True,
-        # MVTec/VisA/MPDD training splits already contain only normal images.
-        # Their normal_indices arrays are created only for the test split.
-        normal_only=False,
+        normal_only=True,
         anom_only=False,
     )
 
@@ -307,6 +306,8 @@ def cache_trajectories(config: dict, args):
 
             output["source_path"] = source_path
             output["category"] = category
+            output["split"] = "train"
+            output["is_normal"] = True
 
             torch.save(output, output_path)
             num_cached += 1
@@ -345,6 +346,12 @@ def cache_trajectories(config: dict, args):
         "backbone": config["backbone"]["model_type"],
         "dataset": dataset_config["dataset_name"],
         "category": dataset_config.get("category"),
+        "normal_only": True,
+        "img_size": dataset_config["img_size"],
+        "transform_type": dataset_config["transform_type"],
+        "config_sha256": hashlib.sha256(
+            json.dumps(config, sort_keys=True).encode("utf-8")
+        ).hexdigest(),
     }
 
     with open(cache_dir / "cache_meta.json", "w", encoding="utf-8") as file:

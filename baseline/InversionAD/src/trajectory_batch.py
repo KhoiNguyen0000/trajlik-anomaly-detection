@@ -91,29 +91,6 @@ def _validate_deltas(deltas: Tensor, computed_deltas: Tensor) -> None:
             f"{tuple(computed_deltas.shape)}, got {tuple(deltas.shape)}"
         )
 
-    low_precision = {
-        torch.float16,
-        torch.bfloat16,
-    }
-    uses_low_precision = (
-        deltas.dtype in low_precision
-        or computed_deltas.dtype in low_precision
-    )
-    atol = 5e-3 if uses_low_precision else 1e-5
-    rtol = 5e-3 if uses_low_precision else 1e-4
-
-    if not torch.allclose(
-        deltas.float(),
-        computed_deltas.float(),
-        atol=atol,
-        rtol=rtol,
-    ):
-        raise ValueError(
-            "deltas are inconsistent with consecutive states. "
-            "Use an unprojected cache or ensure z and delta use "
-            "the same projection."
-        )
-
 
 def build_trajectory_batch(output: Mapping[str, object]) -> dict[str, Tensor]:
     """Convert online Module 0 or cached output to one batched contract.
@@ -173,6 +150,10 @@ def build_trajectory_batch(output: Mapping[str, object]) -> dict[str, Tensor]:
     if supplied_deltas is not None:
         if not isinstance(supplied_deltas, Tensor):
             raise TypeError("deltas must be a torch.Tensor")
+        # A compressed cache may use separate P_z and P_delta projections.
+        # In that valid case P_delta(delta_z) is not equal to the difference
+        # between consecutive P_z(z) states, so only the contract shape can be
+        # checked here. The supplied displacement is the canonical value.
         _validate_deltas(supplied_deltas, computed_deltas)
         deltas = supplied_deltas
     else:

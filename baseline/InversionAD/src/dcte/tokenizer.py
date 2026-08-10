@@ -86,6 +86,7 @@ class TrajectoryTokenizer(nn.Module):
         trajectory_batch = build_trajectory_batch(module0_output)
         states = trajectory_batch["states"]
         epsilons = trajectory_batch["epsilons"]
+        deltas = trajectory_batch["deltas"]
 
         if states.shape[1] != self.num_steps + 1:
             raise ValueError(
@@ -100,8 +101,6 @@ class TrajectoryTokenizer(nn.Module):
 
         # Trajectory tokenization
         state_prev = states[:, :-1]       # [B, 3, 272, 16, 16]
-        state_next = states[:, 1:]        # [B, 3, 272, 16, 16]
-        deltas = state_next - state_prev  # [B, 3, 272, 16, 16]
 
         magnitude = torch.linalg.vector_norm(
             deltas,
