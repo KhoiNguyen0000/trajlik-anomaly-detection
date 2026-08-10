@@ -38,6 +38,16 @@ For pip installation, you can install the required packages with:
 pip install -r requirements.txt
 ```
 
+Before locking InvAD reproduction, audit the exact config, pinned package
+versions, dataset path, checkpoint path, git commit, and dirty state:
+
+```bash
+python scripts/check_reproducibility.py \
+    --config configs/exp_dit_ad/all.yml \
+    --checkpoint /path/to/model.pth \
+    --output reproducibility_report.json
+```
+
 ### Set up for Evaluation
 To run the evaluation, you need to install the `adeval` package. You can do this by running the following command:
 
