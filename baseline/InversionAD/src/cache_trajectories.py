@@ -253,6 +253,7 @@ def cache_trajectories(config: dict, args):
 
     num_cached = 0
     output_paths = set()
+    cache_index = []
 
     for batch in tqdm(loader, desc="Caching trajectories"):
         images = batch["samples"].to(device, non_blocking=True)
@@ -315,6 +316,15 @@ def cache_trajectories(config: dict, args):
             output["is_normal"] = True
 
             torch.save(output, output_path)
+            cache_index.append(
+                {
+                    "file": output_path.name,
+                    "source_path": source_path,
+                    "category": category,
+                    "split": "train",
+                    "is_normal": True,
+                }
+            )
             num_cached += 1
 
     if args.projection == "linear":
@@ -361,6 +371,8 @@ def cache_trajectories(config: dict, args):
 
     with open(cache_dir / "cache_meta.json", "w", encoding="utf-8") as file:
         json.dump(metadata, file, indent=2)
+    with open(cache_dir / "cache_index.json", "w", encoding="utf-8") as file:
+        json.dump(cache_index, file, indent=2)
 
     logger.info("Cached %d images into %s", num_cached, cache_dir)
 

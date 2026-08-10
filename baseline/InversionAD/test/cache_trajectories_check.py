@@ -40,6 +40,11 @@ def validate_cache(cache_dir: Path, expected_categories=None):
     with metadata_path.open(encoding="utf-8") as file:
         metadata = json.load(file)
 
+    index_path = cache_dir / "cache_index.json"
+    assert index_path.is_file(), f"Missing cache index: {index_path}"
+    with index_path.open(encoding="utf-8") as file:
+        cache_index = json.load(file)
+
     num_steps = int(metadata["num_steps"])
     channels = int(metadata["output_channels"])
     storage_dtype = metadata["storage_dtype"]
@@ -73,6 +78,17 @@ def validate_cache(cache_dir: Path, expected_categories=None):
         f"Metadata declares {metadata['num_images']} images, "
         f"but {len(cache_files)} files were found"
     )
+    assert len(cache_index) == len(cache_files), (
+        "cache_index.json length does not match cached image files"
+    )
+    indexed_files = {entry["file"] for entry in cache_index}
+    assert indexed_files == {path.name for path in cache_files}, (
+        "cache_index.json does not enumerate the cache files exactly"
+    )
+    assert all(
+        entry.get("split") == "train" and entry.get("is_normal") is True
+        for entry in cache_index
+    ), "cache index contains non-normal or non-training entries"
 
     observed_categories = set()
     for path in cache_files:

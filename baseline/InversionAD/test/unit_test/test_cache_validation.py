@@ -28,6 +28,19 @@ class CacheValidationTest(unittest.TestCase):
             json.dumps(metadata),
             encoding="utf-8",
         )
+        (root / "cache_index.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "file": "candle_000.pt",
+                        "category": "candle",
+                        "split": "train",
+                        "is_normal": True,
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
         sample = {
             "z_0": torch.randn(8, 2, 2),
             "z_seq": torch.randn(3, 8, 2, 2),
