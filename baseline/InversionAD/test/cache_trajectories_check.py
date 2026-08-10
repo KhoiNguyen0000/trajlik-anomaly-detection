@@ -7,7 +7,13 @@ from pathlib import Path
 import torch
 
 
-REQUIRED_TENSORS = ("z_0", "z_seq", "eps_seq", "delta_z_seq")
+REQUIRED_TENSORS = (
+    "z_0",
+    "z_seq",
+    "eps_seq",
+    "delta_z_seq",
+    "a_end_coarse",
+)
 DTYPES = {
     "float16": torch.float16,
     "float32": torch.float32,
@@ -87,7 +93,7 @@ def validate_cache(cache_dir: Path, expected_categories=None):
             f"{path}: z_0 has dtype {z_0.dtype}, expected {expected_dtype}"
         )
 
-        for key in REQUIRED_TENSORS[1:]:
+        for key in REQUIRED_TENSORS[1:-1]:
             value = sample[key]
             assert tuple(value.shape) == expected_seq_shape, (
                 f"{path}: {key} has shape {tuple(value.shape)}, "
@@ -96,6 +102,16 @@ def validate_cache(cache_dir: Path, expected_categories=None):
             assert value.dtype == expected_dtype, (
                 f"{path}: {key} has dtype {value.dtype}, expected {expected_dtype}"
             )
+
+        endpoint = sample["a_end_coarse"]
+        assert tuple(endpoint.shape) == expected_z_shape[-2:], (
+            f"{path}: a_end_coarse has shape {tuple(endpoint.shape)}, "
+            f"expected {expected_z_shape[-2:]}"
+        )
+        assert endpoint.dtype == expected_dtype, (
+            f"{path}: a_end_coarse has dtype {endpoint.dtype}, "
+            f"expected {expected_dtype}"
+        )
 
         category = sample.get("category")
         assert category, f"{path}: missing category"

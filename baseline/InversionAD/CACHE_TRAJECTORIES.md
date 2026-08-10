@@ -57,7 +57,11 @@ z_0:         (272, 16, 16)
 z_seq:       (3, 272, 16, 16)
 eps_seq:     (3, 272, 16, 16)
 delta_z_seq: (3, 272, 16, 16)
+a_end_coarse: (16, 16)
 ```
+
+`a_end_coarse` is always computed from the original, unprojected final latent.
+This preserves the official InvAD endpoint score when projection caching is on.
 
 ## Validation
 

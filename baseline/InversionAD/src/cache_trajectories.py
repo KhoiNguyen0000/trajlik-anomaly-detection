@@ -287,6 +287,11 @@ def cache_trajectories(config: dict, args):
                 eps_seq,
                 delta_z_seq,
             )
+            projected["a_end_coarse"] = torch.linalg.vector_norm(
+                z_seq[-1].float(),
+                ord=2,
+                dim=1,
+            ).to(storage_dtype)
 
         for index, source_path in enumerate(batch["filenames"]):
             category = batch["clsnames"][index]

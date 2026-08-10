@@ -66,12 +66,18 @@ class TrajectoryBatchTest(unittest.TestCase):
     def test_separately_projected_delta_is_preserved(self):
         output = self.raw_cached_output()
         output["delta_z_seq"] = output["delta_z_seq"] + 1.0
+        original_endpoint = torch.rand(2, 3, 3)
+        output["a_end_coarse"] = original_endpoint
 
         canonical = build_trajectory_batch(output)
 
         torch.testing.assert_close(
             canonical["deltas"],
             output["delta_z_seq"],
+        )
+        torch.testing.assert_close(
+            canonical["a_end_coarse"],
+            original_endpoint,
         )
 
     def test_wrong_delta_shape_is_rejected(self):

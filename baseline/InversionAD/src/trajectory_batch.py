@@ -92,6 +92,29 @@ def _validate_deltas(deltas: Tensor, computed_deltas: Tensor) -> None:
         )
 
 
+def _prepare_endpoint(
+    value: object,
+    states: Tensor,
+) -> Tensor:
+    if value is None:
+        return torch.linalg.vector_norm(
+            states[:, -1].float(),
+            ord=2,
+            dim=1,
+        )
+    if not isinstance(value, Tensor):
+        raise TypeError("a_end_coarse must be a torch.Tensor")
+    if value.ndim == 2 and states.shape[0] == 1:
+        value = value.unsqueeze(0)
+    expected_shape = (states.shape[0], *states.shape[-2:])
+    if tuple(value.shape) != expected_shape:
+        raise ValueError(
+            "a_end_coarse shape is inconsistent with states: expected "
+            f"{expected_shape}, got {tuple(value.shape)}"
+        )
+    return value.float()
+
+
 def build_trajectory_batch(output: Mapping[str, object]) -> dict[str, Tensor]:
     """Convert online Module 0 or cached output to one batched contract.
 
@@ -159,11 +182,9 @@ def build_trajectory_batch(output: Mapping[str, object]) -> dict[str, Tensor]:
     else:
         deltas = computed_deltas
 
-    a_end_coarse = torch.linalg.vector_norm(
-        states[:, -1].float(),
-        ord=2,
-        dim=1,
-    )
+    # A projected cache must carry the norm of the original z_T. Recomputing
+    # it from P_z(z_T) changes InvAD's endpoint baseline.
+    a_end_coarse = _prepare_endpoint(output.get("a_end_coarse"), states)
 
     return {
         "z0": z0.float(),

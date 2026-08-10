@@ -33,6 +33,7 @@ class CacheValidationTest(unittest.TestCase):
             "z_seq": torch.randn(3, 8, 2, 2),
             "eps_seq": torch.randn(3, 8, 2, 2),
             "delta_z_seq": torch.randn(3, 8, 2, 2),
+            "a_end_coarse": torch.rand(2, 2),
             "category": "candle",
             # A VisA path does not contain MVTec's train/good convention.
             "source_path": "visa/candle/Data/Images/Normal/000.JPG",
