@@ -152,6 +152,63 @@ class DCTETest(unittest.TestCase):
         self.assertIsNotNone(gradient)
         self.assertTrue(torch.isfinite(gradient).all())
 
+        decoder_gradient = msm_loss.decoder[0].weight.grad
+        self.assertIsNotNone(decoder_gradient)
+        self.assertTrue(torch.isfinite(decoder_gradient).all())
+
+        target_modules = (
+            msm_loss.state_projection,
+            msm_loss.epsilon_projection,
+            msm_loss.delta_projection,
+        )
+        for module in target_modules:
+            for parameter in module.parameters():
+                self.assertFalse(parameter.requires_grad)
+                self.assertIsNone(parameter.grad)
+
+    def test_msm_target_is_fixed_across_optimizer_step(self):
+        msm_loss = MSMLoss(
+            input_dim=272,
+            projection_dim=64,
+            token_dim=128,
+            trajectory_dim=64,
+            lambda_cos=1.0,
+        )
+        output = self.dcte(
+            self.module0_output,
+            mask=True,
+        )
+        target_before = msm_loss.build_target(output).clone()
+
+        optimizer = torch.optim.SGD(
+            msm_loss.parameters(),
+            lr=0.1,
+        )
+        optimizer.zero_grad()
+        loss = msm_loss(
+            output,
+            self.dcte.tokenizer.step_embedding,
+        )
+        loss.backward()
+        optimizer.step()
+
+        target_after = msm_loss.build_target(output)
+        torch.testing.assert_close(target_before, target_after)
+        self.assertGreater(target_before.std().item(), 0.0)
+
+    def test_msm_requires_masked_dcte_output(self):
+        msm_loss = MSMLoss(input_dim=272)
+        output = self.dcte(
+            self.module0_output,
+            mask=False,
+        )
+
+        with self.assertRaisesRegex(ValueError, "masking enabled"):
+            msm_loss(
+                output,
+                self.dcte.tokenizer.step_embedding,
+            )
+
     def test_zero_displacement_is_finite(self):
         module0_output = {
             "states": torch.zeros(

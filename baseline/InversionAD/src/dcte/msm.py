@@ -16,23 +16,32 @@ class MSMLoss(nn.Module):
 
         self.lambda_cos = lambda_cos
 
-        # Qz
-        self.state_norm = nn.LayerNorm(input_dim)
-        self.state_projection = nn.Linear(
+        # The MSM target encoder is a fixed teacher. If Qz/Qepsilon/Qdelta
+        # are trainable, they can collapse their targets toward zero together
+        # with the decoder, minimizing MSM without preserving information.
+        self.state_norm = nn.LayerNorm(
+            input_dim,
+            elementwise_affine=False,
+        )
+        self.state_projection = self._frozen_projection(
             input_dim,
             projection_dim,
         )
 
-        # Qepsilon
-        self.epsilon_norm = nn.LayerNorm(input_dim)
-        self.epsilon_projection = nn.Linear(
+        self.epsilon_norm = nn.LayerNorm(
+            input_dim,
+            elementwise_affine=False,
+        )
+        self.epsilon_projection = self._frozen_projection(
             input_dim,
             projection_dim,
         )
 
-        # Qdelta
-        self.delta_norm = nn.LayerNorm(input_dim)
-        self.delta_projection = nn.Linear(
+        self.delta_norm = nn.LayerNorm(
+            input_dim,
+            elementwise_affine=False,
+        )
+        self.delta_projection = self._frozen_projection(
             input_dim,
             projection_dim,
         )
@@ -51,6 +60,20 @@ class MSMLoss(nn.Module):
                 target_dim,
             ),
         )
+
+    @staticmethod
+    def _frozen_projection(
+        input_dim,
+        projection_dim,
+    ):
+        projection = nn.Linear(
+            input_dim,
+            projection_dim,
+            bias=False,
+        )
+        nn.init.orthogonal_(projection.weight)
+        projection.requires_grad_(False)
+        return projection
 
     @staticmethod
     def gather_step(
@@ -92,6 +115,46 @@ class MSMLoss(nn.Module):
         ).squeeze(2)
         # [B,P,C]
 
+    @torch.no_grad()
+    def build_target(self, dcte_output):
+        """Build the fixed compressed target y_{p,m}."""
+
+        masked_step_indices = dcte_output["masked_step_indices"]
+        if masked_step_indices is None:
+            raise ValueError("MSM requires DCTE output with masking enabled")
+
+        state_m = self.gather_step(
+            dcte_output["state_prev_p"],
+            masked_step_indices,
+        )
+        epsilon_m = self.gather_step(
+            dcte_output["epsilon_p"],
+            masked_step_indices,
+        )
+        delta_m = self.gather_step(
+            dcte_output["delta_p"],
+            masked_step_indices,
+        )
+
+        target_state = self.state_projection(
+            self.state_norm(state_m)
+        )
+        target_epsilon = self.epsilon_projection(
+            self.epsilon_norm(epsilon_m)
+        )
+        target_delta = self.delta_projection(
+            self.delta_norm(delta_m)
+        )
+
+        return torch.cat(
+            [
+                target_state,
+                target_epsilon,
+                target_delta,
+            ],
+            dim=-1,
+        )
+
     def forward(
         self,
         dcte_output,
@@ -108,67 +171,10 @@ class MSMLoss(nn.Module):
         m = dcte_output["masked_step_indices"]
         # [B,P]
 
-        state_prev_p = dcte_output["state_prev_p"]
-        # [B,P,S,272]
-
-        epsilon_p = dcte_output["epsilon_p"]
-        # [B,P,S,272]
-
-        delta_p = dcte_output["delta_p"]
-        # [B,P,S,272]
+        target = self.build_target(dcte_output)
+        # [B,P,192]
 
         B, P = m.shape
-
-        # ====================================
-        # Get target information at step m
-        # ====================================
-
-        state_m = self.gather_step(
-            state_prev_p,
-            m,
-        )
-        # [B,P,272]
-
-        epsilon_m = self.gather_step(
-            epsilon_p,
-            m,
-        )
-        # [B,P,272]
-
-        delta_m = self.gather_step(
-            delta_p,
-            m,
-        )
-        # [B,P,272]
-
-        # ====================================
-        # y_{p,m}
-        # ====================================
-
-        target_state = self.state_projection(
-            self.state_norm(state_m)
-        )
-        # [B,P,64]
-
-        target_epsilon = self.epsilon_projection(
-            self.epsilon_norm(epsilon_m)
-        )
-        # [B,P,64]
-
-        target_delta = self.delta_projection(
-            self.delta_norm(delta_m)
-        )
-        # [B,P,64]
-
-        target = torch.cat(
-            [
-                target_state,
-                target_epsilon,
-                target_delta,
-            ],
-            dim=-1,
-        )
-        # [B,P,192]
 
         # ====================================
         # Get e(tau_m)
