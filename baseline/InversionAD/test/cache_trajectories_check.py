@@ -41,6 +41,15 @@ def validate_cache(cache_dir: Path, expected_categories=None):
     expected_dtype = DTYPES[storage_dtype]
 
     projection = metadata["projection"]
+    timestep_map = metadata.get("timestep_map")
+    if timestep_map is not None:
+        assert len(timestep_map) == num_steps, (
+            f"Timestep map has {len(timestep_map)} entries, expected {num_steps}"
+        )
+        assert timestep_map == sorted(timestep_map), (
+            f"Timestep map must be sorted, got {timestep_map}"
+        )
+
     projector_path = cache_dir / "projector.pt"
     if projection == "linear":
         assert projector_path.is_file(), "Linear projection requires projector.pt"

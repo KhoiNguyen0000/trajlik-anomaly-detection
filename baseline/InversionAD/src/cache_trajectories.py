@@ -9,7 +9,7 @@ from pathlib import Path
 
 import torch
 import yaml
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
 from src.backbones import get_backbone, get_backbone_feature_shape
@@ -24,14 +24,34 @@ logger = logging.getLogger()
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
-    parser.add_argument("--save_dir", required=True)
+    checkpoint_group = parser.add_mutually_exclusive_group(required=True)
+    checkpoint_group.add_argument(
+        "--save_dir",
+        help="Directory containing model_latest.pth or model_ema_latest.pth",
+    )
+    checkpoint_group.add_argument(
+        "--checkpoint_path",
+        help="Explicit checkpoint file, for example an official model_best.pth",
+    )
     parser.add_argument("--cache_dir", required=True)
     parser.add_argument("--num_inversion_steps", type=int, default=3)
     parser.add_argument("--proj_dim", type=int, default=68)
     parser.add_argument("--batch_size", type=int, default=None)
     parser.add_argument("--num_workers", type=int, default=None)
+    parser.add_argument(
+        "--max_images",
+        type=int,
+        default=None,
+        help="Cache only the first N images",
+    )
     parser.add_argument("--device", default=None)
     parser.add_argument("--use_ema_model", action="store_true")
+    parser.add_argument(
+        "--autocast_dtype",
+        choices=["auto", "float16", "bfloat16", "none"],
+        default="auto",
+        help="CUDA autocast type; auto uses FP16 or BF16 depend on the GPU",
+    )
     parser.add_argument("--force", action="store_true")
     parser.add_argument(
         "--projection",
@@ -60,13 +80,36 @@ def prepare_cache_dir(cache_dir: Path, force: bool):
     cache_dir.mkdir(parents=True)
 
 
-def load_checkpoint(model, save_dir: Path, use_ema_model: bool):
+def resolve_checkpoint_path(
+    save_dir,
+    use_ema_model: bool,
+    checkpoint_path,
+) -> Path:
+    if checkpoint_path is not None:
+        if use_ema_model:
+            raise ValueError(
+                "--use_ema_model cannot be combined with --checkpoint_path; "
+                "the explicit path already selects the checkpoint"
+            )
+        return Path(checkpoint_path)
+
     checkpoint_name = (
-        "model_ema_latest.pth"
-        if use_ema_model
-        else "model_latest.pth"
+        "model_ema_latest.pth" if use_ema_model else "model_latest.pth"
     )
-    checkpoint_path = save_dir / checkpoint_name
+    return Path(save_dir) / checkpoint_name
+
+
+def load_checkpoint(
+    model,
+    save_dir,
+    use_ema_model: bool,
+    checkpoint_path=None,
+):
+    checkpoint_path = resolve_checkpoint_path(
+        save_dir,
+        use_ema_model,
+        checkpoint_path,
+    )
 
     if not checkpoint_path.is_file():
         raise FileNotFoundError(
@@ -91,33 +134,69 @@ def load_checkpoint(model, save_dir: Path, use_ema_model: bool):
     return checkpoint_path
 
 
+def resolve_autocast(device: torch.device, name: str):
+    if device.type != "cuda" or name == "none":
+        return False, torch.float32, "none"
+
+    if name == "auto":
+        dtype = (
+            torch.bfloat16
+            if torch.cuda.is_bf16_supported()
+            else torch.float16
+        )
+    else:
+        dtype = {
+            "float16": torch.float16,
+            "bfloat16": torch.bfloat16,
+        }[name]
+
+    if dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+        raise RuntimeError(
+            "This CUDA device does not support bfloat16; use "
+            "--autocast_dtype float16 (required for NVIDIA T4)"
+        )
+
+    dtype_name = "bfloat16" if dtype == torch.bfloat16 else "float16"
+    return True, dtype, dtype_name
+
+
 @torch.no_grad()
 def cache_trajectories(config: dict, args):
-    config = copy.deepcopy(config)
-
     device_name = args.device or config["meta"]["device"]
     device = torch.device(device_name)
 
     if device.type == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required but not found ")
-    # prepare cache directory
-    cache_dir = Path(args.cache_dir)
-    prepare_cache_dir(cache_dir, args.force)
+        raise RuntimeError("CUDA is required but not available")
+    if args.num_inversion_steps <= 0:
+        raise ValueError("--num_inversion_steps must be positive")
+    if args.max_images is not None and args.max_images <= 0:
+        raise ValueError("--max_images must be positive")
+    if args.projection == "linear" and args.proj_dim <= 0:
+        raise ValueError("--proj_dim must be positive")
 
-    # only get normal set from dataset
     dataset_config = copy.deepcopy(config["data"])
     dataset_config.update(
         train=True,
-        normal_only=True,
+        # MVTec/VisA/MPDD training splits already contain only normal images.
+        # Their normal_indices arrays are created only for the test split.
+        normal_only=False,
         anom_only=False,
     )
 
     dataset = build_dataset(**dataset_config)
+    if args.max_images is not None:
+        dataset = Subset(dataset, range(min(args.max_images, len(dataset))))
+    if len(dataset) == 0:
+        raise ValueError("The selected training dataset is empty")
 
     batch_size = args.batch_size or dataset_config["batch_size"]
     num_workers = (
         args.num_workers if args.num_workers is not None else dataset_config["num_workers"]
     )
+    if batch_size <= 0:
+        raise ValueError("--batch_size must be positive")
+    if num_workers < 0:
+        raise ValueError("--num_workers cannot be negative")
 
     loader = DataLoader(
         dataset,
@@ -128,69 +207,72 @@ def cache_trajectories(config: dict, args):
         pin_memory=dataset_config.get("pin_memory", True),
     )
 
-    # inversion step for cache model
     diffusion_config = copy.deepcopy(config["diffusion"])
-    diffusion_config["num_sampling_steps"] = str(
-        args.num_inversion_steps
-    )
+    diffusion_config["num_sampling_steps"] = str(args.num_inversion_steps)
 
     feature_shape = get_backbone_feature_shape(
         model_type=config["backbone"]["model_type"]
     )
     in_channels = feature_shape[0]
 
-    # denoiser
     denoiser = get_denoiser(
         **diffusion_config,
-        input_shape = feature_shape,
+        input_shape=feature_shape,
     ).to(device).eval()
 
-    #feature extractor
-    feature_extractor = get_backbone(
-        **config["backbone"],
-    ).to(device).eval()
+    feature_extractor = get_backbone(**config["backbone"]).to(device).eval()
 
     checkpoint_path = load_checkpoint(
         denoiser,
-        Path(args.save_dir),
+        args.save_dir,
         args.use_ema_model,
+        args.checkpoint_path,
     )
 
-    storage_dtype = resolve_storage_dtype(
-        args.storage_dtype
+    autocast_enabled, autocast_dtype, autocast_dtype_name = resolve_autocast(
+        device,
+        args.autocast_dtype,
     )
+    logger.info(
+        "Autocast: %s",
+        autocast_dtype_name if autocast_enabled else "disabled",
+    )
+
+    storage_dtype = resolve_storage_dtype(args.storage_dtype)
 
     projector = TrajectoryProjector(
         in_channels=in_channels,
         proj_dim=args.proj_dim,
         projection=args.projection,
-        storage_dtype=storage_dtype
+        storage_dtype=storage_dtype,
     ).to(device).eval()
 
+    # Do not remove an existing cache until the dataset, models, and checkpoint
+    # have all been validated successfully.
+    cache_dir = Path(args.cache_dir)
+    prepare_cache_dir(cache_dir, args.force)
+
     num_cached = 0
+    output_paths = set()
 
     for batch in tqdm(loader, desc="Caching trajectories"):
-        images = batch["samples"].to(
-            device,
-            non_blocking=True,
-        )
+        images = batch["samples"].to(device, non_blocking=True)
+        labels = batch["clslabels"].to(device, non_blocking=True)
 
-        labels = batch["clslabels"].to(
-            device,
-            non_blocking=True,
-        )
-
-        # Backbone's type still fp32
         z_0, _ = feature_extractor(images)
 
         start_t = torch.zeros(
             z_0.shape[0],
             dtype=torch.long,
-            device= device,
+            device=device,
         )
 
-        with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
-            _,z_seq,eps_seq, delta_z_seq = (
+        with torch.amp.autocast(
+            device_type=device.type,
+            dtype=autocast_dtype,
+            enabled=autocast_enabled,
+        ):
+            _, z_seq, eps_seq, delta_z_seq = (
                 denoiser.ddim_reverse_sample(
                     z_0,
                     start_t,
@@ -210,6 +292,13 @@ def cache_trajectories(config: dict, args):
         for index, source_path in enumerate(batch["filenames"]):
             category = batch["clsnames"][index]
             filename = sanitize_filename(source_path, category)
+            output_path = cache_dir / f"{filename}.pt"
+
+            if output_path in output_paths:
+                raise RuntimeError(
+                    f"Duplicate cache filename for source: {source_path}"
+                )
+            output_paths.add(output_path)
 
             output = {
                 key: value[index].detach().cpu()
@@ -219,7 +308,7 @@ def cache_trajectories(config: dict, args):
             output["source_path"] = source_path
             output["category"] = category
 
-            torch.save(output, cache_dir / f"{filename}.pt")
+            torch.save(output, output_path)
             num_cached += 1
 
     if args.projection == "linear":
@@ -246,6 +335,13 @@ def cache_trajectories(config: dict, args):
             else None
         ),
         "storage_dtype": args.storage_dtype,
+        "autocast_dtype": autocast_dtype_name,
+        "checkpoint_path": str(checkpoint_path),
+        "max_images": args.max_images,
+        "timestep_map": [
+            int(timestep)
+            for timestep in denoiser.sample_diffusion.timesteps_map
+        ],
         "backbone": config["backbone"]["model_type"],
         "dataset": dataset_config["dataset_name"],
         "category": dataset_config.get("category"),
@@ -256,6 +352,7 @@ def cache_trajectories(config: dict, args):
 
     logger.info("Cached %d images into %s", num_cached, cache_dir)
 
+
 def main():
     args = parse_args()
 
@@ -265,7 +362,6 @@ def main():
     cache_trajectories(config, args)
 
 
-# HELPER CLASS
 def sanitize_filename(path: str, category: str) -> str:
     path = Path(path)
 
@@ -277,11 +373,11 @@ def sanitize_filename(path: str, category: str) -> str:
 
 
 def resolve_storage_dtype(name: str) -> torch.dtype:
-    mapping = {
+    return {
         "float32": torch.float32,
         "float16": torch.float16,
-    }
-    return mapping[name]
+    }[name]
+
 
 if __name__ == "__main__":
     main()
