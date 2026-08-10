@@ -20,16 +20,26 @@ from src.evaluate import evaluate_inv
 from einops import rearrange
 from sklearn.metrics import roc_curve, roc_auc_score
 
-import wandb
-from dotenv import load_dotenv
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 
 # Load environment variables from .env file
-try: 
-    load_dotenv()
-    use_wandb = (os.getenv("WANDB_API_KEY") is not None)
+use_wandb = False
+try:
+    if load_dotenv is not None:
+        load_dotenv()
+    use_wandb = wandb is not None and os.getenv("WANDB_API_KEY") is not None
     if use_wandb:
         wandb.login(key=os.getenv("WANDB_API_KEY"))
-except ImportError:
+except Exception:
+    use_wandb = False
     pass
 
 def parse_args():
@@ -70,10 +80,12 @@ def main(config):
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
     
-    dataset_config = config['data']
+    dataset_config = copy.deepcopy(config['data'])
     device = config['meta']['device']
     batch_size = config['data']['batch_size']
-    train_dataset = build_dataset(**config['data'])
+    train_config = copy.deepcopy(config['data'])
+    train_config.update(train=True, normal_only=True, anom_only=False)
+    train_dataset = build_dataset(**train_config)
     dataset_config['train'] = False
     dataset_config['anom_only'] = True
     anom_dataset = build_dataset(**dataset_config)
@@ -100,9 +112,8 @@ def main(config):
     feature_extractor.to(device).eval()
 
     optimizer = get_optimizer([model], **config['optimizer'])
-    if config['optimizer']['scheduler_type'] == 'none':
-        pass
-    else:
+    scheduler = None
+    if config['optimizer']['scheduler_type'] != 'none':
         scheduler = get_lr_scheduler(optimizer, **config['optimizer'], iter_per_epoch=len(train_loader))
     
     save_dir = Path(config['logging']['save_dir'])
@@ -140,7 +151,8 @@ def main(config):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), config['optimizer']['grad_clip'])
             optimizer.step()
             
-            scheduler.step()
+            if scheduler is not None:
+                scheduler.step()
             
             # update ema
             for ema_param, model_param in zip(model_ema.parameters(), model.parameters()):
@@ -149,7 +161,8 @@ def main(config):
             if i % config["logging"]["log_interval"] == 0:
                 print(f"Epoch {epoch}, Iter {i}, Loss {loss.item()}")      
                 if use_wandb:
-                    wandb.log({"Loss": loss.item(), "LR": scheduler.get_last_lr()})
+                    learning_rate = optimizer.param_groups[0]["lr"]
+                    wandb.log({"Loss": loss.item(), "LR": learning_rate})
                 
         if (epoch + 1) % config["logging"]["save_interval"] == 0:
             save_path = save_dir / f"model_latest.pth"
@@ -193,7 +206,8 @@ def main(config):
 
 if __name__ == "__main__":
     args = parse_args()
-    main(args)
+    with open(args.config_path, encoding="utf-8") as file:
+        main(yaml.safe_load(file))
 
     
     

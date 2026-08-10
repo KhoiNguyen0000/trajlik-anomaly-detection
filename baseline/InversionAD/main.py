@@ -13,7 +13,7 @@ parser.add_argument(
     default="configs.yaml"
 )
 parser.add_argument(
-    "--task", type=str, choices=["train_dist", "train", "test"],
+    "--task", type=str, choices=["train_dist", "train", "test"], required=True,
 )
 parser.add_argument(
     "--devices", type=str, nargs="+", default=["cuda:0"],
@@ -30,6 +30,8 @@ parser.add_argument("--seed", type=int, default=42)
 parser.add_argument('--noise_step', type=int, default=8, help='Number of noise steps for evaluation')
 parser.add_argument('--use_ema_model', action='store_true', help='Use EMA model for evaluation')
 parser.add_argument('--use_best_model', action='store_true', help='Use best model for evaluation')
+parser.add_argument('--category', type=str, default=None, help='Optional category for evaluation')
+parser.add_argument('--visualize_samples', action='store_true', help='Save evaluation visualizations')
 
 
 def process_main(rank, fname, world_size, devices, task, port, args):
@@ -74,7 +76,8 @@ def process_main(rank, fname, world_size, devices, task, port, args):
     else:
         raise ValueError(f"Task {task} should be specified")
     
-    dist.destroy_process_group()
+    if dist.is_available() and dist.is_initialized():
+        dist.destroy_process_group()
 
 if __name__ == "__main__":
     args = parser.parse_args()

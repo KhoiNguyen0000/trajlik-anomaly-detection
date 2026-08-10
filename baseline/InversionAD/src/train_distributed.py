@@ -2,6 +2,7 @@
 import os
 import sys
 from torch.utils.data import DataLoader
+from torch.utils.data import Sampler
 
 import torch
 import torch.distributed as dist
@@ -22,14 +23,37 @@ import src.evaluate as evaluate
 
 from einops import rearrange
 
-import wandb
-from dotenv import load_dotenv
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
 import multiprocessing as mp
 import logging
 import torch.distributed as dist
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()
+
+
+class DistributedEvalSampler(Sampler):
+    """Shard evaluation data without DistributedSampler's padding duplicates."""
+
+    def __init__(self, dataset, num_replicas, rank):
+        self.dataset = dataset
+        self.num_replicas = num_replicas
+        self.rank = rank
+
+    def __iter__(self):
+        return iter(range(self.rank, len(self.dataset), self.num_replicas))
+
+    def __len__(self):
+        remaining = max(0, len(self.dataset) - self.rank)
+        return (remaining + self.num_replicas - 1) // self.num_replicas
 
 def parse_args():
     parser = argparse.ArgumentParser(description="InvAD Training")
@@ -74,17 +98,22 @@ def main(config):
     # Initialize distributed training
     world_size, rank = init_distributed()
     logger.info(f"Initalized distributed training with world size {world_size} and rank {rank}")
+    use_wandb = False
     if rank > 0:
         logger.setLevel(logging.ERROR)
     else:
         # Load environment variables from .env file
-        try: 
-            load_dotenv()
-            use_wandb = (os.getenv("WANDB_API_KEY") is not None)
+        try:
+            if load_dotenv is not None:
+                load_dotenv()
+            use_wandb = (
+                wandb is not None
+                and os.getenv("WANDB_API_KEY") is not None
+            )
             if use_wandb:
                 wandb.login(key=os.getenv("WANDB_API_KEY"))
-        except ImportError:
-            pass
+        except Exception:
+            use_wandb = False
         if use_wandb:
             # create wandb project
             project = os.environ.get("WANDB_PROJECT")
@@ -100,10 +129,12 @@ def main(config):
     torch.cuda.manual_seed(seed)
     np.random.seed(seed)
     
-    dataset_config = config['data']
+    dataset_config = copy.deepcopy(config['data'])
     device = torch.device('cuda:0')
     batch_size = config['data']['batch_size']
-    train_dataset = build_dataset(**config['data'])
+    train_config = copy.deepcopy(config['data'])
+    train_config.update(train=True, normal_only=True, anom_only=False)
+    train_dataset = build_dataset(**train_config)
     dataset_config['train'] = False
     dataset_config['anom_only'] = True
     anom_dataset = build_dataset(**dataset_config)
@@ -115,11 +146,11 @@ def main(config):
         dataset=train_dataset,
         num_replicas=world_size,
         rank=rank)
-    anom_samplers = [torch.utils.data.distributed.DistributedSampler(
+    anom_samplers = [DistributedEvalSampler(
         dataset=anom_ds,
         num_replicas=world_size,
         rank=rank) for anom_ds in anom_dataset.datasets]
-    normal_samplers = [torch.utils.data.distributed.DistributedSampler(
+    normal_samplers = [DistributedEvalSampler(
         dataset=normal_ds,
         num_replicas=world_size,
         rank=rank) for normal_ds in normal_dataset.datasets]
@@ -133,10 +164,11 @@ def main(config):
         persistent_workers=True,
         drop_last=True,
     )
+    eval_batch_size = max(1, batch_size // world_size)
     anom_loaders = [torch.utils.data.DataLoader(
         anom_ds,
         sampler=anom_sampler,
-        batch_size=batch_size//world_size,
+        batch_size=eval_batch_size,
         pin_memory=True,
         num_workers=2,
         persistent_workers=False,
@@ -145,7 +177,7 @@ def main(config):
     normal_loaders = [torch.utils.data.DataLoader(
         normal_ds,
         sampler=normal_sampler,
-        batch_size=batch_size//world_size,
+        batch_size=eval_batch_size,
         pin_memory=True,
         num_workers=2,
         persistent_workers=False,
@@ -172,19 +204,19 @@ def main(config):
     feature_extractor.to(device).eval()
 
     optimizer = get_optimizer([model], **config['optimizer'])
-    if config['optimizer']['scheduler_type'] == 'none':
-        pass
-    else:
+    scheduler = None
+    if config['optimizer']['scheduler_type'] != 'none':
         scheduler = get_lr_scheduler(optimizer, **config['optimizer'], iter_per_epoch=len(train_loader))
 
     save_dir = Path(config['logging']['save_dir'])
     save_dir.mkdir(parents=True, exist_ok=True)
 
     # save config
-    save_path = save_dir / "config.yaml"
-    with open(save_path, 'w') as f:
-        yaml.dump(config, f)
-    logger.info(f"Config is saved at {save_path}")
+    if rank == 0:
+        save_path = save_dir / "config.yaml"
+        with open(save_path, 'w') as f:
+            yaml.dump(config, f)
+        logger.info(f"Config is saved at {save_path}")
     
     model.train()
     logger.info(f"Steps per epoch: {len(train_loader)}")
@@ -194,6 +226,7 @@ def main(config):
     import time
 
     for epoch in range(config['optimizer']['num_epochs']):
+        train_sampler.set_epoch(epoch)
         for i, data in enumerate(train_loader):
             # --- timing start ---
             t0 = time.time()
@@ -220,7 +253,8 @@ def main(config):
             t4 = time.time()
 
             # Scheduler update
-            scheduler.step()
+            if scheduler is not None:
+                scheduler.step()
 
             # EMA update
             for ema_param, model_param in zip(model_ema.parameters(), model.parameters()):
@@ -229,11 +263,12 @@ def main(config):
 
             # Logging
             if i % config["logging"]["log_interval"] == 0 and rank == 0:
-                logger.info(f"Epoch {epoch}, Iter {i}, Loss {loss.item():.4f}, LR {scheduler.get_last_lr():.6f}")
+                learning_rate = optimizer.param_groups[0]["lr"]
+                logger.info(f"Epoch {epoch}, Iter {i}, Loss {loss.item():.4f}, LR {learning_rate:.6f}")
                 if use_wandb:
                     wandb.log({
                         "Loss": loss.item(),
-                        "LR": scheduler.get_last_lr(),
+                        "LR": learning_rate,
                         "Time/Data [ms]": (t2 - t1) * 1000,
                         "Time/Forward [ms]": (t3 - t2) * 1000,
                         "Time/Backward [ms]": (t4 - t3) * 1000,
@@ -268,16 +303,17 @@ def main(config):
                 )
                 if rank == 0:
                     all_results.update(metrics_dict)
-                dist.barrier()  # wait for all processes to finish evaluation
-            
-            # Compute average AUC across all categories
-            avg_results = {}
-            keys = ["I-AUROC", "I-AP", "I-F1Max", "P-AUROC", "P-AP", "P-F1Max", "PRO", "mAD"]
-            for key in keys:
-                avg_results[key] = np.mean([all_results[cat][key] for cat in all_results.keys()])
-            logger.info(f"Average results: {avg_results}")
+                evaluate.distributed_barrier()
             
             if rank == 0:
+                # Compute averages only on the process that owns gathered results.
+                avg_results = {}
+                keys = ["I-AUROC", "I-AP", "I-F1Max", "P-AUROC", "P-AP", "P-F1Max", "PRO", "mAD"]
+                for key in keys:
+                    avg_results[key] = np.mean(
+                        [all_results[cat][key] for cat in all_results]
+                    )
+                logger.info(f"Average results: {avg_results}")
                 current_auc = avg_results["I-AUROC"]
                 if current_auc > best_auc:
                     best_auc = current_auc
@@ -310,15 +346,16 @@ def main(config):
                     })
                 logger.info(f"AUC: {current_auc} at epoch {epoch}")
             
-            dist.barrier()  # wait for all processes to finish evaluation
+            evaluate.distributed_barrier()
     logger.info("Training is done!")
     
     # save model
-    save_path = save_dir / "model_latest.pth"
-    torch.save(model.state_dict(), save_path)
-    save_path = save_dir / "model_ema_latest.pth"
-    torch.save(model_ema.state_dict(), save_path)
-    logger.info(f"Model is saved at {save_dir}")
+    if rank == 0:
+        save_path = save_dir / "model_latest.pth"
+        torch.save(model.state_dict(), save_path)
+        save_path = save_dir / "model_ema_latest.pth"
+        torch.save(model_ema.state_dict(), save_path)
+        logger.info(f"Model is saved at {save_dir}")
 
 
     

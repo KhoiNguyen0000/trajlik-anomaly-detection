@@ -1,6 +1,7 @@
 
 import os
 import sys
+import copy
 import torch
 from torch.utils.data import DataLoader
 
@@ -90,7 +91,7 @@ def main(config, args):
     
     assert args.save_dir is not None, "Please provide a save directory"
 
-    dataset_config = config['data']
+    dataset_config = copy.deepcopy(config['data'])
     device = config['meta']['device']
     
     if args.category is not None:
@@ -248,8 +249,9 @@ def main(config, args):
         
     
 def init_denoiser(num_inference_steps, device, config, in_sh, inherit_model=None):
-    config["diffusion"]["num_sampling_steps"] = str(num_inference_steps)
-    model: Denoiser = get_denoiser(**config['diffusion'], input_shape=in_sh)
+    diffusion_config = copy.deepcopy(config["diffusion"])
+    diffusion_config["num_sampling_steps"] = str(num_inference_steps)
+    model: Denoiser = get_denoiser(**diffusion_config, input_shape=in_sh)
     
     if inherit_model is not None:
         for p, p_inherit in zip(model.parameters(), inherit_model.parameters()):
@@ -267,6 +269,74 @@ def calculate_log_pdf_spatial(x):
     ll = -0.5 * (x ** 2 + np.log(2 * np.pi))
     ll = ll.sum(dim=1)  # Sum over the channel dimension
     return ll
+
+
+def _autocast_settings(device):
+    device = torch.device(device)
+    if device.type != "cuda":
+        return False, torch.float32
+    dtype = (
+        torch.bfloat16
+        if torch.cuda.is_bf16_supported()
+        else torch.float16
+    )
+    return True, dtype
+
+
+def _synchronize(device):
+    device = torch.device(device)
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+
+
+def _memory_allocated_mb(device):
+    device = torch.device(device)
+    if device.type != "cuda":
+        return 0.0
+    return torch.cuda.max_memory_allocated(device) / (1024 * 1024)
+
+
+def inversion_endpoint_outputs(
+    eval_denoiser,
+    features,
+    labels,
+    output_size,
+):
+    """Run one InvAD inversion and compute batch-safe official scores."""
+
+    start_t = torch.zeros(
+        features.shape[0],
+        device=features.device,
+        dtype=torch.long,
+    )
+    autocast_enabled, autocast_dtype = _autocast_settings(features.device)
+    with torch.amp.autocast(
+        device_type=features.device.type,
+        dtype=autocast_dtype,
+        enabled=autocast_enabled,
+    ):
+        final_latent = eval_denoiser.ddim_reverse_sample(
+            features,
+            start_t,
+            labels,
+            eta=0.0,
+        )
+
+    endpoint_coarse = torch.linalg.vector_norm(
+        final_latent.float(),
+        ord=2,
+        dim=1,
+    )
+    flat_endpoint = endpoint_coarse.flatten(start_dim=1)
+    image_range = flat_endpoint.amax(dim=1) - flat_endpoint.amin(dim=1)
+    nll = -calculate_log_pdf(final_latent.float())
+    endpoint_map = F.interpolate(
+        endpoint_coarse.unsqueeze(1),
+        size=output_size,
+        mode="bilinear",
+        align_corners=False,
+    ).squeeze(1)
+    return final_latent, endpoint_map, image_range, nll
 
 @torch.no_grad()
 def evaluate_recon(denoiser, feature_extractor, anom_loaders, normal_loaders, config, in_sh, epoch, eval_step, noise_step, device):
@@ -366,7 +436,7 @@ def evaluate_recon(denoiser, feature_extractor, anom_loaders, normal_loaders, co
     return roc_dict
 
 @torch.no_grad()
-def evaluate_inv(denoiser, feature_extractor, anom_loaders, normal_loaders, config, in_sh, epoch, eval_step, device, args):
+def evaluate_inv(denoiser, feature_extractor, anom_loaders, normal_loaders, config, in_sh, epoch, eval_step, device, args=None):
     denoiser.eval()
     feature_extractor.eval()
     
@@ -384,7 +454,6 @@ def evaluate_inv(denoiser, feature_extractor, anom_loaders, normal_loaders, conf
         logger.info(f"[{category}] Evaluation step: {eval_step}")
         logger.info(f"[{category}] Epoch: {epoch}")
     
-        start_t = torch.tensor([0] * 8, device=device, dtype=torch.long)
         normal_diffs = []
         normal_nlls = []
         normal_maps = []
@@ -396,33 +465,32 @@ def evaluate_inv(denoiser, feature_extractor, anom_loaders, normal_loaders, conf
         for batch in tqdm(normal_loader, total=len(normal_loader)):
             
             images = batch["samples"].to(device)
-            org_h, org_w = images.shape[2], images.shape[3]
+            org_h, org_w = images.shape[-2:]
             paths = batch["filenames"]
             labels = batch["clslabels"].to(device)
             anom_labels = batch["labels"]
             normal_gt_masks.append(batch["masks"])
             
+            _synchronize(device)
             s_time = time.perf_counter()
             features, _ = feature_extractor(images)
-            with torch.amp.autocast("cuda", dtype=torch.bfloat16):
-                latents_last = eval_denoiser.ddim_reverse_sample(
-                    features, start_t, labels, eta=0.0
-                )
-            latents_last_l2 = torch.sum(latents_last ** 2, dim=1).sqrt()
-            min_diffs_spatial = latents_last_l2.view(latents_last_l2.shape[0], -1).min(dim=1)[0]  # (bs, )
-            max_diffs_spatial = latents_last_l2.view(latents_last_l2.shape[0], -1).max(dim=1)[0]  # (bs, )
-            diffs = max_diffs_spatial - min_diffs_spatial  # (bs, )
-            nll = calculate_log_pdf(latents_last.cpu()) * -1
+            latents_last, normal_map, diffs, nll = inversion_endpoint_outputs(
+                eval_denoiser,
+                features,
+                labels,
+                (org_h, org_w),
+            )
+            _synchronize(device)
             e_time = time.perf_counter()
-            time_meter.update(e_time - s_time, n=1)
+            batch_size = images.shape[0]
+            time_meter.update((e_time - s_time) / batch_size, n=batch_size)
 
-            normal_map = F.interpolate(latents_last_l2.unsqueeze(0), size=(org_h, org_w), mode='bilinear', align_corners=False).squeeze(0)
             normal_maps.append(normal_map.cpu().numpy())
             normal_nlls.extend(nll.cpu().numpy())
             normal_diffs.extend(diffs.cpu().numpy())
             
             memory_meter.update(
-                torch.cuda.max_memory_allocated() / (1024 * 1024), n=latents_last.shape[0]
+                _memory_allocated_mb(device), n=latents_last.shape[0]
             )
             
             # Save the samples for visualization
@@ -448,34 +516,31 @@ def evaluate_inv(denoiser, feature_extractor, anom_loaders, normal_loaders, conf
         
         for batch in tqdm(anom_loader, total=len(anom_loader)):
             images = batch["samples"].to(device)
+            org_h, org_w = images.shape[-2:]
             labels = batch["clslabels"].to(device)
             anomaly_gt_masks.append(batch["masks"])
             anom_labels = batch["labels"]
             
-            torch.cuda.synchronize()
+            _synchronize(device)
             s_time = time.perf_counter()
             features, _ = feature_extractor(images)
-            
-            with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
-                latents_last = eval_denoiser.ddim_reverse_sample(
-                    features, start_t, labels, eta=0.0
-                )
-            latents_last_l2 = torch.sum(latents_last ** 2, dim=1).sqrt()
-            min_diffs_spatial = latents_last_l2.view(latents_last_l2.shape[0], -1).min(dim=1)[0]
-            max_diffs_spatial = latents_last_l2.view(latents_last_l2.shape[0], -1).max(dim=1)[0]
-            diffs = max_diffs_spatial - min_diffs_spatial
-            nll = calculate_log_pdf(latents_last.cpu()) * -1
+            latents_last, anomaly_map, diffs, nll = inversion_endpoint_outputs(
+                eval_denoiser,
+                features,
+                labels,
+                (org_h, org_w),
+            )
+            _synchronize(device)
             e_time = time.perf_counter()
-            
-            time_meter.update(e_time - s_time, n=1)
+            batch_size = images.shape[0]
+            time_meter.update((e_time - s_time) / batch_size, n=batch_size)
     
-            anomaly_map = F.interpolate(latents_last_l2.unsqueeze(0), size=(org_h, org_w), mode='bilinear', align_corners=False).squeeze(0)
             anomaly_maps.append(anomaly_map.cpu().numpy())
             anomaly_nlls.extend(nll.cpu().numpy())
             anomaly_diffs.extend(diffs.cpu().numpy())
             
             memory_meter.update(
-                torch.cuda.max_memory_allocated() / (1024 * 1024), n=latents_last.shape[0]
+                _memory_allocated_mb(device), n=latents_last.shape[0]
             )
             
             # Save the samples for visualization
@@ -581,9 +646,10 @@ def evaluate_inv(denoiser, feature_extractor, anom_loaders, normal_loaders, conf
         logger.info(f"[{category}] Pixel F1Max: {px_f1max} at epoch {epoch}")
         logger.info(f"[{category}] mAD: {mad} at epoch {epoch}")    
         
-        torch.cuda.empty_cache()
+        if torch.device(device).type == "cuda":
+            torch.cuda.empty_cache()
         
-        if args.visualize_samples:
+        if getattr(args, "visualize_samples", False):
             logger.info(f"[{category}] Visualizing samples and anomaly maps")
             map_min, map_max = np.min(y_score_map), np.max(y_score_map)
             logger.info(f"[{category}] Anomaly map min: {map_min}, max: {map_max}")
@@ -619,10 +685,21 @@ def evaluate_inv(denoiser, feature_extractor, anom_loaders, normal_loaders, conf
 import torch.distributed as dist
 @torch.no_grad()
 def concat_all_gather(array, world_size):
+    if isinstance(array, torch.Tensor):
+        array = array.detach().cpu().numpy()
+    else:
+        array = np.asarray(array)
+    if not dist.is_available() or not dist.is_initialized() or world_size == 1:
+        return array
     world_size = dist.get_world_size()
     gather_list = [None] * world_size
     dist.all_gather_object(gather_list, array)  # Gather the arrays from all processes
     return np.concatenate(gather_list, axis=0)
+
+
+def distributed_barrier():
+    if dist.is_available() and dist.is_initialized():
+        dist.barrier()
 
 @torch.no_grad()
 def evaluate_dist(denoiser, feature_extractor, anom_loader, normal_loader, config, in_sh, epoch, eval_step, device, world_size, rank):
@@ -636,36 +713,27 @@ def evaluate_dist(denoiser, feature_extractor, anom_loader, normal_loader, confi
     logger.info(f"[{category}] Evaluation step: {eval_step}")
     logger.info(f"[{category}] Epoch: {epoch}")
     
-    start_t = torch.tensor([0] * 8, device=device, dtype=torch.long)
     normal_diffs = []
     normal_nlls = []
     normal_maps = []
     normal_gt_masks = []
-    losses = []
     for i, batch in enumerate(normal_loader):
         images = batch["samples"].to(device)
         labels = batch["clslabels"].to(device)
         normal_gt_masks.append(batch["masks"])
         
         features, _ = feature_extractor(images)
-        loss = denoiser(features, labels)
-        losses.append(loss.cpu().numpy())
-        
-        latents_last = eval_denoiser.ddim_reverse_sample(
-            features, start_t, labels, eta=0.0
+        latents_last, normal_map, diffs, nll = inversion_endpoint_outputs(
+            eval_denoiser,
+            features,
+            labels,
+            tuple(images.shape[-2:]),
         )
-        latents_last_l2 = torch.sum(latents_last ** 2, dim=1).sqrt()
-        min_diffs_spatial = latents_last_l2.view(latents_last_l2.shape[0], -1).min(dim=1)[0]  # (bs, )
-        max_diffs_spatial = latents_last_l2.view(latents_last_l2.shape[0], -1).max(dim=1)[0]  # (bs, )
-        diffs = min_diffs_spatial - max_diffs_spatial  # (bs, )
-        nll = calculate_log_pdf(latents_last) * -1
-        
-        normal_map = F.interpolate(latents_last_l2.unsqueeze(0), size=(images.shape[2], images.shape[3]), mode='bilinear', align_corners=False).squeeze(0)
         normal_maps.append(normal_map.cpu())
     
         normal_nlls.append(nll.cpu())
         normal_diffs.append(diffs.cpu())
-    dist.barrier()  # Ensure all processes have completed the normal data processing
+    distributed_barrier()
         
     anomaly_diffs = []
     anomaly_nlls = []
@@ -677,27 +745,19 @@ def evaluate_dist(denoiser, feature_extractor, anom_loader, normal_loader, confi
         anomaly_gt_masks.append(batch["masks"])
         
         features, _ = feature_extractor(images)
-        loss = denoiser(features, labels)
-        losses.append(loss.cpu().numpy())
-        latents_last = eval_denoiser.ddim_reverse_sample(
-            features, start_t, labels, eta=0.0
+        latents_last, anomaly_map, diffs, nll = inversion_endpoint_outputs(
+            eval_denoiser,
+            features,
+            labels,
+            tuple(images.shape[-2:]),
         )
-        latents_last_l2 = torch.sum(latents_last ** 2, dim=1).sqrt()
-        min_diffs_spatial = latents_last_l2.view(latents_last_l2.shape[0], -1).min(dim=1)[0]
-        max_diffs_spatial = latents_last_l2.view(latents_last_l2.shape[0], -1).max(dim=1)[0]
-        diffs = min_diffs_spatial - max_diffs_spatial
-        nll = calculate_log_pdf(latents_last) * -1
-        
-        anomaly_map = F.interpolate(latents_last_l2.unsqueeze(0), size=(images.shape[2], images.shape[3]), mode='bilinear', align_corners=False).squeeze(0)
         anomaly_maps.append(anomaly_map.cpu())
         anomaly_nlls.append(nll.cpu())
         anomaly_diffs.append(diffs.cpu())
-        del latents_last, latents_last_l2, diffs, nll
-        torch.cuda.empty_cache()                     
-    dist.barrier()  # Ensure all processes have completed the anomaly data processing
-    
-    losses = np.array(losses)
-    logger.info(f"[{category}] Loss: {losses.mean()} at epoch {epoch}")
+        del latents_last, diffs, nll
+        if torch.device(device).type == "cuda":
+            torch.cuda.empty_cache()
+    distributed_barrier()
     
     normal_diffs = torch.cat(normal_diffs, dim=0)  
     anomaly_diffs = torch.cat(anomaly_diffs, dim=0)
