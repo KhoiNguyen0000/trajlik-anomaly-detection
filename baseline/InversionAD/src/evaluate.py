@@ -53,6 +53,12 @@ def parse_args():
     
     parser.add_argument('--eval_strategy', type=str, default='inversion', choices=['inversion', 'reconstruction'], help='Evaluation strategy: inversion or reconstruction')
     parser.add_argument('--save_dir', type=str, default=None, help='Path to the directory contais results')
+    parser.add_argument(
+        '--checkpoint_path',
+        type=str,
+        default=None,
+        help='Explicit checkpoint file, including downloaded model.pth files',
+    )
     parser.add_argument('--eval_step', type=int, default=-1, help='Number of steps for evaluation')
     parser.add_argument('--noise_step', type=int, default=8, help='Number of noise steps for evaluation')
     parser.add_argument('--use_ema_model', action='store_true', help='Use EMA model for evaluation')
@@ -89,7 +95,8 @@ def main(config, args):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     
-    assert args.save_dir is not None, "Please provide a save directory"
+    if args.save_dir is None and args.checkpoint_path is None:
+        raise ValueError("Provide --save_dir or --checkpoint_path")
 
     dataset_config = copy.deepcopy(config['data'])
     device = config['meta']['device']
@@ -162,15 +169,7 @@ def main(config, args):
     feature_extractor.to(device).eval()
     
     # Load the model
-    if args.use_ema_model:
-        checkpoint_path = os.path.join(args.save_dir, 'model_ema_latest.pth')
-    elif args.use_best_model:
-        checkpoint_path = os.path.join(args.save_dir, 'model_best.pth')
-        if not os.path.exists(checkpoint_path):
-            logger.warning(f"Best model checkpoint not found at {checkpoint_path}. Using latest model instead.")
-            checkpoint_path = os.path.join(args.save_dir, 'model_latest.pth')
-    else:
-        checkpoint_path = os.path.join(args.save_dir, 'model_latest.pth')
+    checkpoint_path = resolve_evaluation_checkpoint(args)
         
     model_ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     if 'module.' in list(model_ckpt.keys())[0]:
@@ -258,6 +257,32 @@ def init_denoiser(num_inference_steps, device, config, in_sh, inherit_model=None
             p.data.copy_(p_inherit.data)
     model.to(device).eval()
     return model
+
+
+def resolve_evaluation_checkpoint(args):
+    if args.checkpoint_path is not None:
+        if args.use_ema_model or args.use_best_model:
+            raise ValueError(
+                "An explicit --checkpoint_path cannot be combined with "
+                "--use_ema_model or --use_best_model"
+            )
+        checkpoint_path = args.checkpoint_path
+    elif args.use_ema_model:
+        checkpoint_path = os.path.join(args.save_dir, 'model_ema_latest.pth')
+    elif args.use_best_model:
+        checkpoint_path = os.path.join(args.save_dir, 'model_best.pth')
+        if not os.path.exists(checkpoint_path):
+            logger.warning(
+                "Best model checkpoint not found at %s. Using latest model instead.",
+                checkpoint_path,
+            )
+            checkpoint_path = os.path.join(args.save_dir, 'model_latest.pth')
+    else:
+        checkpoint_path = os.path.join(args.save_dir, 'model_latest.pth')
+
+    if not os.path.isfile(checkpoint_path):
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+    return checkpoint_path
 
 def calculate_log_pdf(x):
     ll = -0.5 * (x ** 2 + np.log(2 * np.pi))
@@ -869,5 +894,10 @@ if __name__ == "__main__":
                 print(exc)
         return config
     
-    config = load_config(os.path.join(args.save_dir, "config.yaml"))
+    config_dir = (
+        args.save_dir
+        if args.save_dir is not None
+        else os.path.dirname(args.checkpoint_path)
+    )
+    config = load_config(os.path.join(config_dir, "config.yaml"))
     main(config, args)

@@ -1,9 +1,16 @@
+import tempfile
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import torch
 
-from src.evaluate import concat_all_gather, inversion_endpoint_outputs
+from src.evaluate import (
+    concat_all_gather,
+    inversion_endpoint_outputs,
+    resolve_evaluation_checkpoint,
+)
 
 
 class DenoiserStub:
@@ -41,6 +48,19 @@ class EvaluateContractTest(unittest.TestCase):
         gathered = concat_all_gather(values, world_size=1)
 
         np.testing.assert_array_equal(gathered, np.array([1.0, 2.0]))
+
+    def test_explicit_downloaded_checkpoint_is_supported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "model.pth"
+            checkpoint.touch()
+            args = SimpleNamespace(
+                checkpoint_path=str(checkpoint),
+                save_dir=None,
+                use_ema_model=False,
+                use_best_model=False,
+            )
+
+            self.assertEqual(resolve_evaluation_checkpoint(args), str(checkpoint))
 
 
 if __name__ == "__main__":

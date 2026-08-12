@@ -132,13 +132,20 @@ def build_trajectory_batch(output: Mapping[str, object]) -> dict[str, Tensor]:
         if not isinstance(states, Tensor) or not isinstance(epsilons, Tensor):
             raise TypeError("states and epsilons must be torch.Tensors")
 
-        if states.ndim == 4 and epsilons.ndim == 4:
+        canonical_unbatched = states.ndim == 4 and epsilons.ndim == 4
+        if canonical_unbatched:
             states = states.unsqueeze(0)
             epsilons = epsilons.unsqueeze(0)
 
         _validate_shapes(states, epsilons)
         z0 = states[:, 0]
         supplied_deltas = output.get("deltas")
+        if (
+            canonical_unbatched
+            and isinstance(supplied_deltas, Tensor)
+            and supplied_deltas.ndim == 4
+        ):
+            supplied_deltas = supplied_deltas.unsqueeze(0)
     else:
         required_keys = {"z_0", "z_seq", "eps_seq"}
         missing_keys = required_keys.difference(output)

@@ -63,6 +63,18 @@ class TrajectoryBatchTest(unittest.TestCase):
 
         self.assertEqual(tuple(canonical["states"].shape), (1, 4, 8, 3, 3))
 
+    def test_unbatched_canonical_delta_gets_batch_dimension(self):
+        canonical = build_trajectory_batch(
+            {
+                "states": self.states[0],
+                "epsilons": self.epsilons[0],
+                "deltas": self.deltas[0],
+                "a_end_coarse": torch.rand(3, 3),
+            }
+        )
+
+        self.assertEqual(tuple(canonical["deltas"].shape), (1, 3, 8, 3, 3))
+
     def test_separately_projected_delta_is_preserved(self):
         output = self.raw_cached_output()
         output["delta_z_seq"] = output["delta_z_seq"] + 1.0

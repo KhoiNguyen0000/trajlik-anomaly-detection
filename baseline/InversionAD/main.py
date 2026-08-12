@@ -24,6 +24,7 @@ parser.add_argument(
 
 # For test
 parser.add_argument("--save_dir", type=str, default=None,)
+parser.add_argument("--checkpoint_path", type=str, default=None,)
 parser.add_argument("--eval_strategy", type=str, default="inversion",)
 parser.add_argument("--eval_step", type=int, default=3)
 parser.add_argument("--seed", type=int, default=42)
@@ -83,7 +84,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if "test" in args.task:
-        args.fname = os.path.join(args.save_dir, "config.yaml")
+        if args.save_dir is None and args.checkpoint_path is None:
+            parser.error("test requires --save_dir or --checkpoint_path")
+        config_dir = (
+            args.save_dir
+            if args.save_dir is not None
+            else os.path.dirname(args.checkpoint_path)
+        )
+        args.fname = os.path.join(config_dir, "config.yaml")
     
     if "dist" not in args.task:
         process_main(0, args.fname, 1, args.devices, args.task, args.port, args)
