@@ -118,7 +118,7 @@ class MPDD(Dataset):
             if "good" in str(img_file):
                 inputs["anom_type"] = "good"
             else:
-                inputs["anom_type"] = str(img_file).split("/")[-2]
+                inputs["anom_type"] = img_file.parent.name
             if self.is_mask:
                 mask_dir =  img_file.parent.parent.parent / 'ground_truth' / img_file.parent.name 
                 mask_file = mask_dir / img_file.name.replace('.png', '_mask.png')

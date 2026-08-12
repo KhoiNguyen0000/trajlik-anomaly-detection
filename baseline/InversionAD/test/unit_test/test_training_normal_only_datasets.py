@@ -120,6 +120,27 @@ class TrainingNormalOnlyDatasetsTest(unittest.TestCase):
                 anom_only=True,
             )
 
+    def test_test_split_anomaly_type_is_cross_platform(self):
+        root = self.root / "mvtec"
+        category = "bottle"
+        self.write_image(root / category / "test" / "good" / "000.png")
+        self.write_image(root / category / "test" / "broken" / "001.png")
+        self.write_image(
+            root / category / "ground_truth" / "broken" / "001_mask.png"
+        )
+        dataset = MVTecAD(
+            data_root=str(root),
+            category=category,
+            input_res=8,
+            split="test",
+            transform=self.transform,
+            is_mask=True,
+            cls_label=True,
+        )
+
+        self.assertEqual(dataset[0]["anom_type"], "good")
+        self.assertEqual(dataset[1]["anom_type"], "broken")
+
 
 if __name__ == "__main__":
     unittest.main()
