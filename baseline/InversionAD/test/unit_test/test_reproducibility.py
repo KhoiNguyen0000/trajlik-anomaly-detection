@@ -1,6 +1,7 @@
+import copy
 import unittest
 
-from src.reproducibility import validate_main_protocol
+from src.reproducibility import compare_checkpoint_config, validate_main_protocol
 
 
 def valid_config():
@@ -36,6 +37,17 @@ class ReproducibilityTest(unittest.TestCase):
         self.assertTrue(any("transform_type" in error for error in errors))
         self.assertTrue(any("data_root" in error for error in errors))
         self.assertTrue(any("eval_step" in error for error in errors))
+
+    def test_checkpoint_architecture_and_preprocessing_must_match(self):
+        run_config = valid_config()
+        checkpoint_config = copy.deepcopy(run_config)
+        checkpoint_config["diffusion"]["depth"] = 16
+        checkpoint_config["data"]["transform_type"] = "default"
+
+        errors = compare_checkpoint_config(run_config, checkpoint_config)
+
+        self.assertTrue(any("diffusion.depth" in error for error in errors))
+        self.assertTrue(any("data.transform_type" in error for error in errors))
 
 
 if __name__ == "__main__":

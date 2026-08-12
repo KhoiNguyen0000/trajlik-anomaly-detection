@@ -3,6 +3,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import yaml
+
 
 def validate_main_protocol(config):
     """Return all config mismatches against the locked TrajLik main protocol."""
@@ -65,6 +67,36 @@ def pinned_version_report(requirements_path):
     return checked, mismatches
 
 
+def compare_checkpoint_config(run_config, checkpoint_config):
+    """Check fields that determine model shape and frozen preprocessing."""
+
+    mismatches = []
+    paths = (
+        ("backbone", "model_type"),
+        ("backbone", "outblocks"),
+        ("backbone", "outstrides"),
+        ("backbone", "stride"),
+        ("data", "img_size"),
+        ("data", "transform_type"),
+        ("diffusion", "model_type"),
+        ("diffusion", "num_classes"),
+        ("diffusion", "z_channels"),
+        ("diffusion", "depth"),
+        ("diffusion", "width"),
+        ("diffusion", "patch_size"),
+        ("diffusion", "learn_sigma"),
+    )
+    for section, key in paths:
+        run_value = run_config.get(section, {}).get(key)
+        checkpoint_value = checkpoint_config.get(section, {}).get(key)
+        if run_value != checkpoint_value:
+            mismatches.append(
+                f"{section}.{key}: run config has {run_value!r}, "
+                f"checkpoint config has {checkpoint_value!r}"
+            )
+    return mismatches
+
+
 def git_state(repo_dir):
     repo_dir = Path(repo_dir)
 
@@ -103,16 +135,41 @@ def build_reproducibility_report(
         errors.append(f"dataset root does not exist: {data_root.resolve()}")
 
     checkpoint = None
+    checkpoint_config_path = None
     if checkpoint_path is not None:
-        checkpoint = str(Path(checkpoint_path).resolve())
-        if not Path(checkpoint_path).is_file():
+        checkpoint_file = Path(checkpoint_path)
+        checkpoint = str(checkpoint_file.resolve())
+        if not checkpoint_file.is_file():
             errors.append(f"checkpoint does not exist: {checkpoint}")
+        else:
+            companion_config = checkpoint_file.parent / "config.yaml"
+            checkpoint_config_path = str(companion_config.resolve())
+            if not companion_config.is_file():
+                errors.append(
+                    "checkpoint companion config does not exist: "
+                    f"{checkpoint_config_path}"
+                )
+            else:
+                with companion_config.open(encoding="utf-8") as file:
+                    checkpoint_config = yaml.safe_load(file)
+                errors.extend(
+                    "checkpoint protocol " + error
+                    for error in validate_main_protocol(checkpoint_config)
+                )
+                errors.extend(
+                    "checkpoint mismatch " + error
+                    for error in compare_checkpoint_config(
+                        config,
+                        checkpoint_config,
+                    )
+                )
 
     return {
         "valid": not errors,
         "errors": errors,
         "config_path": str(Path(config_path).resolve()),
         "checkpoint_path": checkpoint,
+        "checkpoint_config_path": checkpoint_config_path,
         "dataset_root": str(data_root.resolve()),
         "git": git_state(repo_dir),
         "packages": versions,
