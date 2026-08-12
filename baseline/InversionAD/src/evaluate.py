@@ -620,6 +620,7 @@ def evaluate_inv(denoiser, feature_extractor, anom_loaders, normal_loaders, conf
             gt_labels=y_true,
             pred_scores=y_score,
             metrics=['img_auroc', 'img_aupr', 'img_f1max', 'img_ap'],
+            device=device,
         )
         img_auroc = img_metrics["img_auroc"]
         img_ap = img_metrics["img_ap"]
@@ -648,7 +649,8 @@ def evaluate_inv(denoiser, feature_extractor, anom_loaders, normal_loaders, conf
         px_metrics = calculate_px_metrics(
             gt_masks=y_true_map,
             pred_scores=y_score_map,
-            metrics=['px_auroc', 'px_aupr', 'px_f1max', 'px_ap', 'px_aupro']
+            metrics=['px_auroc', 'px_aupr', 'px_f1max', 'px_ap', 'px_aupro'],
+            device=device,
         )
         px_auroc = px_metrics["px_auroc"]
         px_ap = px_metrics["px_ap"]
@@ -830,6 +832,7 @@ def evaluate_dist(denoiser, feature_extractor, anom_loader, normal_loader, confi
         gt_labels=y_true,
         pred_scores=y_score,
         metrics=['img_auroc', 'img_aupr', 'img_f1max', 'img_ap'],
+        device=device,
     )
     roc_auc = img_metrics["img_auroc"]
     ap = img_metrics["img_ap"]
@@ -864,7 +867,8 @@ def evaluate_dist(denoiser, feature_extractor, anom_loader, normal_loader, confi
     px_metrics = calculate_px_metrics(
         gt_masks=y_true_map,
         pred_scores=y_score_map,
-        metrics=['px_auroc', 'px_aupr', 'px_f1max', 'px_ap', 'px_aupro']
+        metrics=['px_auroc', 'px_aupr', 'px_f1max', 'px_ap', 'px_aupro'],
+        device=device,
     )
     roc_auc_px = px_metrics["px_auroc"]
     ap_px = px_metrics["px_ap"]

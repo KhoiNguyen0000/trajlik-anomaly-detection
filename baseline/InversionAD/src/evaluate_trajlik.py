@@ -144,7 +144,7 @@ def evaluate_loader(model, loader, device):
     }
 
 
-def calculate_trajlik_metrics(predictions):
+def calculate_trajlik_metrics(predictions, device="cpu"):
     labels = np.asarray(predictions["labels"])
     masks = (np.asarray(predictions["masks"]) > 0).astype(np.uint8)
     image_scores = np.asarray(predictions["image_scores"])
@@ -154,11 +154,13 @@ def calculate_trajlik_metrics(predictions):
         gt_labels=labels,
         pred_scores=image_scores,
         metrics=["img_auroc", "img_aupr", "img_f1max", "img_ap"],
+        device=device,
     )
     pixel_metrics = calculate_px_metrics(
         gt_masks=masks,
         pred_scores=pixel_maps,
         metrics=["px_auroc", "px_aupr", "px_f1max", "px_ap", "px_aupro"],
+        device=device,
     )
     metrics = {
         "I-AUROC": image_metrics["img_auroc"],
@@ -234,7 +236,8 @@ def evaluate(args):
             drop_last=False,
         )
         metrics_by_category[category] = calculate_trajlik_metrics(
-            evaluate_loader(model, loader, device)
+            evaluate_loader(model, loader, device),
+            device=device,
         )
         logger.info("[%s] %s", category, metrics_by_category[category])
 

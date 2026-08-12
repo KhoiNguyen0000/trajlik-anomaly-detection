@@ -7,7 +7,7 @@ import numpy as np
 from src.dist_utils import concat_all_gather
 
 from sklearn.metrics import roc_auc_score, average_precision_score
-from src.adeval import EvalAccumulatorCuda, f1_max_gpu_hist
+from src.adeval import EvalAccumulator, EvalAccumulatorCuda, f1_max_gpu_hist
 
 SUPPORTED_METRICS = [
     'img_auroc', 'img_aupr', 'img_f1max', 'img_ap',
@@ -71,6 +71,7 @@ def calculate_img_metrics(
     gt_labels: np.ndarray,
     pred_scores: np.ndarray,
     metrics: list,
+    device: torch.device | str | None = None,
 ):
     """Calculate image-level anomaly detection metrics.
     Args:
@@ -81,6 +82,11 @@ def calculate_img_metrics(
         dict: Dictionary containing computed metrics.
     """
     results_dict = {}
+    device = torch.device(
+        device
+        if device is not None
+        else ("cuda" if torch.cuda.is_available() else "cpu")
+    )
     if 'img_auroc' in metrics:
         auroc = roc_auc_score(gt_labels, pred_scores)
         results_dict['img_auroc'] = auroc
@@ -91,8 +97,14 @@ def calculate_img_metrics(
         if 'img_ap' in metrics:
             results_dict['img_ap'] = aupr
     if 'img_f1max' in metrics:
-        scores_tensor = torch.from_numpy(pred_scores).to(torch.float32).cuda()
-        labels_tensor = torch.from_numpy(gt_labels).to(torch.float32).cuda()
+        scores_tensor = torch.from_numpy(pred_scores).to(
+            device=device,
+            dtype=torch.float32,
+        )
+        labels_tensor = torch.from_numpy(gt_labels).to(
+            device=device,
+            dtype=torch.float32,
+        )
         f1, _ = f1_max_gpu_hist(scores_tensor, labels_tensor)
         results_dict['img_f1max'] = f1.item()
         
@@ -102,7 +114,7 @@ def calculate_px_metrics(
     gt_masks: np.ndarray,
     pred_scores: np.ndarray,
     metrics: list,
-    device: torch.device = torch.device('cuda'),
+    device: torch.device | str | None = None,
     distributed: bool = False,
     accum_size: int = 100,
     eps: float = 1e-8,
@@ -116,18 +128,30 @@ def calculate_px_metrics(
         dict: Dictionary containing computed metrics.
     """
     results_dict = {}
+    device = torch.device(
+        device
+        if device is not None
+        else ("cuda" if torch.cuda.is_available() else "cpu")
+    )
     gt_masks_flat = gt_masks.reshape(-1)
     pred_scores_flat = pred_scores.reshape(-1)
     score_min, score_max = pred_scores_flat.min() - eps, pred_scores_flat.max() + eps
 
     # -- use adeval for AUROC and AUPRO, AUPR
     nb = len(gt_masks) // accum_size + (1 if len(gt_masks) % accum_size != 0 else 0)
-    evaluator = EvalAccumulatorCuda(score_min, score_max, score_min, score_max)
+    evaluator_class = EvalAccumulatorCuda if device.type == "cuda" else EvalAccumulator
+    evaluator = evaluator_class(score_min, score_max, score_min, score_max)
     for i in range(0, nb):
         start_idx = i * accum_size
         end_idx = min((i + 1) * accum_size, len(gt_masks))
-        gt_batch = torch.from_numpy((gt_masks[start_idx:end_idx] > 0).astype(np.uint8)).to(device)
-        score_batch = torch.from_numpy(pred_scores[start_idx:end_idx]).to(device)
+        if device.type == "cuda":
+            gt_batch = torch.from_numpy(
+                (gt_masks[start_idx:end_idx] > 0).astype(np.uint8)
+            ).to(device)
+            score_batch = torch.from_numpy(pred_scores[start_idx:end_idx]).to(device)
+        else:
+            gt_batch = (gt_masks[start_idx:end_idx] > 0).astype(np.uint8)
+            score_batch = pred_scores[start_idx:end_idx]
         evaluator.add_anomap_batch(score_batch, gt_batch)
     results = evaluator.summary()
     if 'px_auroc' in metrics:
