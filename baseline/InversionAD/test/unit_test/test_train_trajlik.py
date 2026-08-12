@@ -42,6 +42,7 @@ class TrainTrajLikSmokeTest(unittest.TestCase):
                     "num_steps": 3,
                     "output_channels": 8,
                     "normal_only": True,
+                    "projection": "none",
                     "config_sha256": "test",
                 }
             ),

@@ -89,3 +89,7 @@ The command uses a category-stratified 95/5 normal split, balances training
 categories, optimizes conditional NLL plus MSM, and fits both empirical CDFs
 only on the held-out normal subset. The checkpoint records the exact arguments,
 cache fingerprint, split indices, seed, and package versions.
+
+The end-to-end online pipeline currently accepts only `--projection none`.
+Linear projection caches remain an explicit storage experiment and are rejected
+by head training until the same saved projector is wired into online inference.

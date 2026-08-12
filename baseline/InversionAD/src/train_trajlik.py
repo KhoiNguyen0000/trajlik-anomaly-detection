@@ -149,6 +149,12 @@ def train(args):
     dataset = TrajectoryCacheDataset(args.cache_dir)
     if int(dataset.metadata["num_steps"]) != 3:
         raise ValueError("Main TrajLik protocol requires exactly three inversion steps")
+    if dataset.metadata.get("projection") != "none":
+        raise ValueError(
+            "Online-equivalent head training currently requires projection=none. "
+            "Projected caches need their projector reapplied during online "
+            "inference and must not be used silently."
+        )
 
     training_indices, calibration_indices = stratified_normal_split(
         dataset.categories,
