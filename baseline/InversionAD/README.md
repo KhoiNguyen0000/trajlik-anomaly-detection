@@ -62,6 +62,10 @@ python -m src.evaluate_trajlik \
 Evaluation never refits calibration and rejects mismatched configs, projected
 head caches, non-normal cache provenance, or anything other than three NFE.
 
+Main normal-only runs use the fixed final/EMA InvAD checkpoint. Periodic test
+metrics are reporting-only: training never writes a "best" checkpoint selected
+from anomaly labels.
+
 ### Set up for Evaluation
 To run the evaluation, you need to install the `adeval` package. You can do this by running the following command:
 

@@ -222,7 +222,6 @@ def main(config):
     logger.info(f"Steps per epoch: {len(train_loader)}")
     
     es_count = 0
-    best_auc = 0
     import time
 
     for epoch in range(config['optimizer']['num_epochs']):
@@ -315,11 +314,6 @@ def main(config):
                     )
                 logger.info(f"Average results: {avg_results}")
                 current_auc = avg_results["I-AUROC"]
-                if current_auc > best_auc:
-                    best_auc = current_auc
-                    save_path = save_dir / f"model_best.pth"
-                    torch.save(model.state_dict(), save_path)
-                    logger.info(f"Model is saved at {save_dir}")
 
                 if use_wandb:
                     for cat in categories:

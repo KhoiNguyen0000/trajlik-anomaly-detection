@@ -132,7 +132,6 @@ def main(config):
     model.train()
     print(f"Steps per epoch: {len(train_loader)}")
     
-    best_mad = 0
     for epoch in range(config['optimizer']['num_epochs']):
         for i, data in enumerate(train_loader):
             img, labels = data["samples"], data["clslabels"]    # (B, C, H, W), (B,)
@@ -184,12 +183,6 @@ def main(config):
                 device,
             )
             current_mad = metrics_dict[config["data"]["category"]]["mAD"]
-            
-            if current_mad > best_mad:
-                best_mad = current_mad
-                save_path = save_dir / f"model_best.pth"
-                torch.save(model.state_dict(), save_path)
-                print(f"Model is saved at {save_dir}")
 
             if use_wandb:
                 wandb.log({"mAD": current_mad})
