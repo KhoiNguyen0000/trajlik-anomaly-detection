@@ -53,6 +53,9 @@ class MPDD(Dataset):
         self.cls_label = cls_label
         self.anom_only = anom_only
         self.normal_only = normal_only
+
+        if self.anom_only and self.normal_only:
+            raise ValueError("anom_only and normal_only cannot both be True")
         
         assert Path(self.data_root).exists(), f"Path {self.data_root} does not exist"
         assert self.split == 'train' or self.split == 'test'
@@ -78,8 +81,8 @@ class MPDD(Dataset):
                 else:
                     self.labels.append(1)
 
-            self.normal_indices = [i for i, label in enumerate(self.labels) if label == 0]
-            self.anom_indices = [i for i, label in enumerate(self.labels) if label == 1]
+        self.normal_indices = [i for i, label in enumerate(self.labels) if label == 0]
+        self.anom_indices = [i for i, label in enumerate(self.labels) if label == 1]
         self.num_classes = len(MPDD_CLASSES)
         
     def __getitem__(self, index):
@@ -95,7 +98,7 @@ class MPDD(Dataset):
             img_file = self.img_files[index]
             label = self.labels[index]
         
-        cls_name = str(img_file).split("/")[-4]
+        cls_name = img_file.parts[-4]
         with open(img_file, 'rb') as f:
             img = Image.open(f)
             img = img.convert('RGB')
@@ -115,7 +118,7 @@ class MPDD(Dataset):
             if "good" in str(img_file):
                 inputs["anom_type"] = "good"
             else:
-                inputs["anom_type"] = str(img_file).split("/")[-2]
+                inputs["anom_type"] = img_file.parent.name
             if self.is_mask:
                 mask_dir =  img_file.parent.parent.parent / 'ground_truth' / img_file.parent.name 
                 mask_file = mask_dir / img_file.name.replace('.png', '_mask.png')

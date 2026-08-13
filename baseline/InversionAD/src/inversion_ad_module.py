@@ -10,10 +10,12 @@ class InversionADModule(nn.Module):
         self,
         feature_extractor: nn.Module,
         eval_denoiser: nn.Module,
+        autocast_dtype: torch.dtype | None = None,
     ):
         super().__init__()
         self.feature_extractor = feature_extractor
         self.eval_denoiser = eval_denoiser
+        self.autocast_dtype = autocast_dtype
 
     @torch.no_grad()
     def forward(
@@ -31,9 +33,17 @@ class InversionADModule(nn.Module):
             device=z_0.device,
         )
 
+        autocast_dtype = self.autocast_dtype
+        if autocast_dtype is None and images.is_cuda:
+            autocast_dtype = (
+                torch.bfloat16
+                if torch.cuda.is_bf16_supported()
+                else torch.float16
+            )
+
         with torch.amp.autocast(
             device_type=images.device.type,
-            dtype=torch.bfloat16,
+            dtype=autocast_dtype or torch.float32,
             enabled=images.is_cuda,
         ):
             final_latent, z_seq, eps_seq, delta_z_seq = (
@@ -46,7 +56,11 @@ class InversionADModule(nn.Module):
                 )
             )
 
-        latents_l2 = torch.sum(final_latent**2, dim=1).sqrt()
+        latents_l2 = torch.linalg.vector_norm(
+            final_latent.float(),
+            ord=2,
+            dim=1,
+        )
         a_end = F.interpolate(
             latents_l2.unsqueeze(1),
             size=(height, width),
@@ -59,5 +73,6 @@ class InversionADModule(nn.Module):
             "z_seq": z_seq,
             "eps_seq": eps_seq,
             "delta_z_seq": delta_z_seq,
+            "a_end_coarse": latents_l2,
             "a_end": a_end,
         }
