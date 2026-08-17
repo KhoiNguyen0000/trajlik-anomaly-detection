@@ -19,10 +19,17 @@ top-level packages.
 
 ## Output
 
-Training produces a TrajLik checkpoint and a JSON training summary. Evaluation
-produces image-level and pixel-level metrics, with an optional JSON result file.
-Training logs batch progress plus epoch-level total, NLL, MSM, learning rate,
-duration, and peak GPU memory. The epoch history is also stored in both outputs.
+Training reserves 5% of normal images for validation and another untouched 5%
+for score calibration. It selects the best head and performs early stopping only
+from normal validation NLL. Evaluation produces image-level and pixel-level
+metrics, with an optional JSON result file.
+
+Training writes `head.pth` (the calibrated best head), `head_best.pth`,
+`head_latest.pth`, and a JSON summary. The latest file is an uncalibrated
+training snapshot; evaluation must use `head.pth` or `head_best.pth`. Logs include
+train/validation NLL, NLL per dimension, MSM, base NLL, flow log-determinant,
+learning rate, duration, and peak GPU memory. The complete epoch history and
+split indices are stored in the final checkpoint.
 
 ## Requirements
 
@@ -40,9 +47,12 @@ Train the TrajLik head:
 ```bash
 python -m scripts.train_trajlik \
     --cache_dir /path/to/cache \
-    --output_path results/trajlik/head.pth \
-    --device cuda:0
+    --output_path results/trajlik/head.pth
 ```
+
+Defaults are 50 maximum epochs, five-epoch patience, and a 90/5/5
+train/validation/calibration split. `lambda_msm=1` is only an initial candidate;
+main experiment values must be selected without anomaly labels.
 
 Evaluate the complete pipeline:
 

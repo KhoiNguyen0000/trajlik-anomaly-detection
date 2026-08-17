@@ -50,7 +50,7 @@ class TrainTrajLikSmokeTest(unittest.TestCase):
         )
         (root / "cache_index.json").write_text(json.dumps(index), encoding="utf-8")
 
-    def test_one_epoch_checkpoint_can_be_loaded(self):
+    def test_best_checkpoint_can_be_loaded_after_early_stopping(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             cache_dir = root / "cache"
@@ -61,13 +61,16 @@ class TrainTrajLikSmokeTest(unittest.TestCase):
                 cache_dir=str(cache_dir),
                 output_path=str(checkpoint_path),
                 device="cpu",
-                epochs=1,
+                epochs=3,
                 batch_size=2,
                 num_workers=0,
                 learning_rate=1e-4,
                 weight_decay=1e-4,
                 grad_clip=1.0,
                 calibration_fraction=0.25,
+                validation_fraction=0.25,
+                patience=1,
+                min_delta=1e9,
                 seed=42,
                 projection_dim=4,
                 token_dim=8,
@@ -88,9 +91,44 @@ class TrainTrajLikSmokeTest(unittest.TestCase):
             self.assertTrue(calibrator.fitted)
             self.assertFalse(head.training)
             self.assertEqual(checkpoint["calibration_indices"].numel(), 1)
-            self.assertEqual(len(checkpoint["training_history"]), 1)
-            self.assertIn("nll_loss", checkpoint["training_history"][0])
-            self.assertIn("msm_loss", checkpoint["training_history"][0])
+            self.assertEqual(checkpoint["validation_indices"].numel(), 1)
+            self.assertEqual(checkpoint["training_indices"].numel(), 2)
+            all_indices = torch.cat(
+                (
+                    checkpoint["training_indices"],
+                    checkpoint["validation_indices"],
+                    checkpoint["calibration_indices"],
+                )
+            )
+            self.assertEqual(set(all_indices.tolist()), {0, 1, 2, 3})
+            self.assertEqual(len(checkpoint["training_history"]), 2)
+            self.assertEqual(checkpoint["best_epoch"], 1)
+            self.assertIn("validation_nll", checkpoint["training_history"][0])
+            self.assertIn("validation_msm", checkpoint["training_history"][0])
+            self.assertIn("validation_log_det", checkpoint["training_history"][0])
+            first_epoch = checkpoint["training_history"][0]
+            self.assertAlmostEqual(
+                first_epoch["validation_nll"],
+                first_epoch["validation_base_nll"]
+                - first_epoch["validation_log_det"],
+                places=5,
+            )
+            self.assertTrue((root / "head_best.pth").is_file())
+            self.assertTrue((root / "head_latest.pth").is_file())
+            best_checkpoint = torch.load(
+                root / "head_best.pth",
+                map_location="cpu",
+                weights_only=False,
+            )
+            latest_checkpoint = torch.load(
+                root / "head_latest.pth",
+                map_location="cpu",
+                weights_only=False,
+            )
+            self.assertEqual(best_checkpoint["checkpoint_type"], "trajlik_final")
+            self.assertEqual(latest_checkpoint["checkpoint_type"], "trajlik_training")
+            with self.assertRaisesRegex(ValueError, "do not contain normal calibration"):
+                load_trajlik_checkpoint(root / "head_latest.pth")
 
 
 if __name__ == "__main__":
