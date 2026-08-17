@@ -3,7 +3,7 @@ import unittest
 
 import torch
 
-from normal_tail import (
+from trajlik.normal_tail import (
     EmpiricalTailCalibrator,
     normal_kfold_indices,
     normal_train_calibration_split,

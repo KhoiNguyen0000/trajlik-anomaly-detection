@@ -17,15 +17,13 @@ if project_root not in sys.path:
 
 from dcte import DCTE, MSMLoss
 from ectf import EndpointConditionedTrajectoryFlow
-from normal_tail import EmpiricalTailCalibrator
-from trajectory_cache_dataset import (
+from trajlik.model import TrajLikHead
+from trajlik.normal_tail import EmpiricalTailCalibrator
+from trajlik.trajectory_cache_dataset import (
     TrajectoryCacheDataset,
     balanced_category_sampler,
     stratified_normal_split,
 )
-from trajlik import TrajLikHead
-
-
 logger = logging.getLogger(__name__)
 
 

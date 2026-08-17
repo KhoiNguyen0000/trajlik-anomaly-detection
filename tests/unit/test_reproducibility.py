@@ -1,7 +1,7 @@
 import copy
 import unittest
 
-from reproducibility import compare_checkpoint_config, validate_main_protocol
+from trajlik.reproducibility import compare_checkpoint_config, validate_main_protocol
 
 
 def valid_config():

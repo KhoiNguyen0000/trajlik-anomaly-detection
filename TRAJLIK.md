@@ -14,6 +14,9 @@ evaluation time.
 
 The main pipeline requires three inversion steps and `projection=none`.
 
+Core pipeline utilities live in `trajlik/`; DCTE and ECTF remain separate
+top-level packages.
+
 ## Output
 
 Training produces a TrajLik checkpoint and a JSON training summary. Evaluation

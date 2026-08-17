@@ -5,8 +5,8 @@ from torch import nn
 
 from dcte import DCTE, MSMLoss
 from ectf import EndpointConditionedTrajectoryFlow
-from normal_tail import EmpiricalTailCalibrator
-from trajlik import TrajLikAD, TrajLikHead
+from trajlik.model import TrajLikAD, TrajLikHead
+from trajlik.normal_tail import EmpiricalTailCalibrator
 
 
 def build_head():

@@ -23,11 +23,11 @@ from src.adeval.eval_utils import calculate_img_metrics, calculate_px_metrics
 from src.backbones import get_backbone, get_backbone_feature_shape
 from src.datasets import build_dataset
 from src.denoiser import get_denoiser
-from inversion_ad_module import InversionADModule
-from reproducibility import compare_checkpoint_config, validate_main_protocol
 from scripts.cache_trajectories import load_checkpoint
 from scripts.train_trajlik import load_trajlik_checkpoint
-from trajlik import TrajLikAD
+from trajlik.inversion_ad_module import InversionADModule
+from trajlik.model import TrajLikAD
+from trajlik.reproducibility import compare_checkpoint_config, validate_main_protocol
 
 
 logger = logging.getLogger(__name__)

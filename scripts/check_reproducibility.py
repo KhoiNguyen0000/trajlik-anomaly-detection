@@ -13,7 +13,7 @@ for path in (REPO_DIR, BASELINE_DIR):
     if value not in sys.path:
         sys.path.insert(0, value)
 
-from reproducibility import build_reproducibility_report, write_report
+from trajlik.reproducibility import build_reproducibility_report, write_report
 
 
 def parse_args():

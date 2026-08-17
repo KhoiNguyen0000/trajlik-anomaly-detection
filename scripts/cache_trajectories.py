@@ -23,7 +23,7 @@ for path in (project_root, baseline_root):
 from src.backbones import get_backbone, get_backbone_feature_shape
 from src.datasets import build_dataset
 from src.denoiser import get_denoiser
-from trajectory_projector import TrajectoryProjector
+from trajlik.trajectory_projector import TrajectoryProjector
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()

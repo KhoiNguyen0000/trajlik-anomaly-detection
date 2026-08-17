@@ -3,7 +3,7 @@ import unittest
 import torch
 from torch import nn
 
-from inversion_ad_module import InversionADModule
+from trajlik.inversion_ad_module import InversionADModule
 
 
 class FeatureExtractorStub(nn.Module):

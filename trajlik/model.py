@@ -3,8 +3,8 @@ from torch import Tensor, nn
 
 from dcte import DCTE, MSMLoss
 from ectf import EndpointConditionedTrajectoryFlow
-from normal_tail import EmpiricalTailCalibrator
-from trajectory_batch import build_trajectory_batch
+from trajlik.normal_tail import EmpiricalTailCalibrator
+from trajlik.trajectory_batch import build_trajectory_batch
 
 
 class TrajLikHead(nn.Module):

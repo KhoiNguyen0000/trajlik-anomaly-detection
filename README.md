@@ -6,7 +6,8 @@ calibration, and endpoint/path score fusion.
 
 ## Structure
 
-- `dcte/`, `ectf/`: core TrajLik modules.
+- `trajlik/`: pipeline composition, cache handling, scoring, and protocol checks.
+- `dcte/`, `ectf/`: trajectory encoder and conditional flow modules.
 - `scripts/`: cache, train, evaluate, and reproducibility entrypoints.
 - `tests/`: unit, integration, and baseline regression tests.
 - `baseline/InversionAD/`: InvAD baseline implementation and configs.
