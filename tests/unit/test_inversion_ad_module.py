@@ -1,15 +1,9 @@
-import sys
 import unittest
-from pathlib import Path
 
 import torch
 from torch import nn
 
-baseline_root = str(Path(__file__).resolve().parents[2] / "baseline" / "InversionAD")
-if baseline_root not in sys.path:
-    sys.path.insert(0, baseline_root)
-
-from src.inversion_ad_module import InversionADModule
+from inversion_ad_module import InversionADModule
 
 
 class FeatureExtractorStub(nn.Module):

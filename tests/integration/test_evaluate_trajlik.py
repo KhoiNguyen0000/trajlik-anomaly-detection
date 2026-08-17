@@ -7,7 +7,7 @@ baseline_root = str(Path(__file__).resolve().parents[2] / "baseline" / "Inversio
 if baseline_root not in sys.path:
     sys.path.insert(0, baseline_root)
 
-from src.evaluate_trajlik import config_fingerprint, validate_runtime_contract
+from scripts.evaluate_trajlik import config_fingerprint, validate_runtime_contract
 
 
 def runtime_config():

@@ -13,10 +13,17 @@ import yaml
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
+project_root = Path(__file__).resolve().parents[1]
+baseline_root = project_root / "baseline" / "InversionAD"
+for path in (project_root, baseline_root):
+    value = str(path)
+    if value not in sys.path:
+        sys.path.insert(0, value)
+
 from src.backbones import get_backbone, get_backbone_feature_shape
 from src.datasets import build_dataset
 from src.denoiser import get_denoiser
-from src.trajectory_projector import TrajectoryProjector
+from trajectory_projector import TrajectoryProjector
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 logger = logging.getLogger()

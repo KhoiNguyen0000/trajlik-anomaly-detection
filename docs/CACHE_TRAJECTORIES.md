@@ -15,31 +15,26 @@ validator uses these fields instead of dataset-specific path conventions.
 
 ## Usage
 
-Run from `baseline/InversionAD`.
+Run from the project root.
 
 Smoke test on eight images using the EMA checkpoint:
 
 ```bash
-python -m src.cache_trajectories \
-    --config configs/exp_dit_ad/all.yml \
-    --save_dir results/exp_dit_base_ad/all \
+python -m scripts.cache_trajectories \
+    --config baseline/InversionAD/configs/exp_dit_ad/all.yml \
+    --checkpoint_path /path/to/checkpoint.pth \
     --cache_dir /kaggle/working/cache_smoke \
-    --num_inversion_steps 3 \
     --batch_size 1 \
-    --num_workers 0 \
     --max_images 8 \
-    --projection none \
-    --storage_dtype float32 \
-    --autocast_dtype auto \
-    --use_ema_model \
-    --device cuda:0
+    --force
 ```
 
 For a full run, remove `--max_images` and change `--cache_dir`. To use a
-specific checkpoint, replace `--save_dir` and `--use_ema_model` with:
+To select an EMA checkpoint from a training directory instead, replace
+`--checkpoint_path` with:
 
 ```bash
---checkpoint_path /path/to/checkpoint.pth
+--save_dir /path/to/training/results --use_ema_model
 ```
 
 The config architecture must match the checkpoint architecture.
@@ -68,7 +63,7 @@ This preserves the official InvAD endpoint score when projection caching is on.
 ## Validation
 
 ```bash
-python ../../tests/cache_trajectories_check.py \
+python tests/cache_trajectories_check.py \
     --cache_dir /kaggle/working/cache_val
 ```
 

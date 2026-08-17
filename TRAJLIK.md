@@ -8,7 +8,7 @@ evaluation time.
 
 ## Input
 
-- A trajectory cache created by `src.cache_trajectories`
+- A trajectory cache created by `scripts.cache_trajectories`
 - The matching InvAD config and checkpoint
 - MVTec AD, VisA, or MPDD for evaluation
 
@@ -28,12 +28,12 @@ produces image-level and pixel-level metrics, with an optional JSON result file.
 
 ## Usage
 
-Run the following commands from `baseline/InversionAD`.
+Run the following commands from the project root.
 
 Train the TrajLik head:
 
 ```bash
-python -m src.train_trajlik \
+python -m scripts.train_trajlik \
     --cache_dir /path/to/cache \
     --output_path results/trajlik/head.pth \
     --device cuda:0
@@ -42,7 +42,7 @@ python -m src.train_trajlik \
 Evaluate the complete pipeline:
 
 ```bash
-python -m src.evaluate_trajlik \
+python -m scripts.evaluate_trajlik \
     --config /path/to/config.yml \
     --invad_checkpoint /path/to/model.pth \
     --trajlik_checkpoint results/trajlik/head.pth \

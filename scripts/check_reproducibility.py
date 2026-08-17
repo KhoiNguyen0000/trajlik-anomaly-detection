@@ -7,10 +7,13 @@ import yaml
 
 
 REPO_DIR = Path(__file__).parents[1]
-if str(REPO_DIR) not in sys.path:
-    sys.path.insert(0, str(REPO_DIR))
+BASELINE_DIR = REPO_DIR / "baseline" / "InversionAD"
+for path in (REPO_DIR, BASELINE_DIR):
+    value = str(path)
+    if value not in sys.path:
+        sys.path.insert(0, value)
 
-from src.reproducibility import build_reproducibility_report, write_report
+from reproducibility import build_reproducibility_report, write_report
 
 
 def parse_args():
@@ -36,7 +39,7 @@ def main():
     report = build_reproducibility_report(
         config=config,
         config_path=args.config,
-        requirements_path=repo_dir / "requirements.txt",
+        requirements_path=BASELINE_DIR / "requirements.txt",
         repo_dir=repo_dir,
         checkpoint_path=args.checkpoint,
         check_dataset=not args.skip_dataset,

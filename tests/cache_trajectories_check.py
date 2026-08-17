@@ -1,4 +1,4 @@
-"""Validate a trajectory cache produced by src.cache_trajectories."""
+"""Validate a trajectory cache produced by scripts.cache_trajectories."""
 
 import argparse
 import json

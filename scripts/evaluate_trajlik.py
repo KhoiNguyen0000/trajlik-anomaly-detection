@@ -12,18 +12,21 @@ import torch
 import yaml
 from torch.utils.data import ConcatDataset, DataLoader
 
+project_root = Path(__file__).resolve().parents[1]
+baseline_root = project_root / "baseline" / "InversionAD"
+for path in (project_root, baseline_root):
+    value = str(path)
+    if value not in sys.path:
+        sys.path.insert(0, value)
+
 from src.adeval.eval_utils import calculate_img_metrics, calculate_px_metrics
 from src.backbones import get_backbone, get_backbone_feature_shape
-from src.cache_trajectories import load_checkpoint
 from src.datasets import build_dataset
 from src.denoiser import get_denoiser
-from src.inversion_ad_module import InversionADModule
-from src.reproducibility import compare_checkpoint_config, validate_main_protocol
-from src.train_trajlik import load_trajlik_checkpoint
-project_root = str(Path(__file__).resolve().parents[3])
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
+from inversion_ad_module import InversionADModule
+from reproducibility import compare_checkpoint_config, validate_main_protocol
+from scripts.cache_trajectories import load_checkpoint
+from scripts.train_trajlik import load_trajlik_checkpoint
 from trajlik import TrajLikAD
 
 
