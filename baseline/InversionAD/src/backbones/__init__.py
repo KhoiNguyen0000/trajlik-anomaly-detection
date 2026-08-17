@@ -1,6 +1,3 @@
-import sys
-sys.path.append('./src/backbones')
-
 import torch
 import torch.nn as nn
 

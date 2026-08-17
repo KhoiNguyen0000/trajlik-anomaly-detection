@@ -1,6 +1,11 @@
+import sys
+from pathlib import Path
+
 import torch
 
-import _bootstrap  # noqa: F401
+baseline_root = str(Path(__file__).resolve().parents[2] / "baseline" / "InversionAD")
+if baseline_root not in sys.path:
+    sys.path.insert(0, baseline_root)
 
 from src.denoiser import get_denoiser
 

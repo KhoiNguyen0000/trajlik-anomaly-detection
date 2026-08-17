@@ -3,6 +3,7 @@ import importlib.metadata
 import json
 import logging
 import random
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,9 +11,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from src.project_root import add_project_root_to_path
-
-add_project_root_to_path()
+project_root = str(Path(__file__).resolve().parents[3])
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from dcte import DCTE, MSMLoss
 from ectf import EndpointConditionedTrajectoryFlow

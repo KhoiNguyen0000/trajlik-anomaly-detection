@@ -1,4 +1,5 @@
 import csv
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,7 +7,9 @@ from pathlib import Path
 from PIL import Image
 from torchvision import transforms
 
-import _bootstrap  # noqa: F401
+baseline_root = str(Path(__file__).resolve().parents[2] / "baseline" / "InversionAD")
+if baseline_root not in sys.path:
+    sys.path.insert(0, baseline_root)
 
 from src.datasets.mpdd import MPDD, MPDD_CLASSES
 from src.datasets.mvtec_ad import AD_CLASSES, MVTecAD
