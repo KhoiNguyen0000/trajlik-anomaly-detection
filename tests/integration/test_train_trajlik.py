@@ -88,6 +88,9 @@ class TrainTrajLikSmokeTest(unittest.TestCase):
             self.assertTrue(calibrator.fitted)
             self.assertFalse(head.training)
             self.assertEqual(checkpoint["calibration_indices"].numel(), 1)
+            self.assertEqual(len(checkpoint["training_history"]), 1)
+            self.assertIn("nll_loss", checkpoint["training_history"][0])
+            self.assertIn("msm_loss", checkpoint["training_history"][0])
 
 
 if __name__ == "__main__":

@@ -4,12 +4,14 @@ import json
 import logging
 import random
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset
+from tqdm import tqdm
 
 project_root = str(Path(__file__).resolve().parents[1])
 if project_root not in sys.path:
@@ -114,7 +116,14 @@ def fit_calibrator(head, loader, device):
     head.eval()
     endpoint_scores = []
     path_scores = []
-    for batch in loader:
+    progress = tqdm(
+        loader,
+        desc="Fitting calibration",
+        unit="batch",
+        leave=False,
+        disable=not logger.isEnabledFor(logging.INFO),
+    )
+    for batch in progress:
         batch = {key: value.to(device) for key, value in batch.items()}
         output = head(batch, mask=False)
         endpoint_scores.append(output["a_end_coarse"].cpu())
@@ -194,27 +203,91 @@ def train(args):
         weight_decay=args.weight_decay,
     )
 
+    trainable_parameters = sum(
+        parameter.numel() for parameter in head.parameters() if parameter.requires_grad
+    )
+    logger.info(
+        "Training TrajLik | device=%s | cache=%s | train=%d | calibration=%d "
+        "| categories=%d | channels=%d | trainable_params=%d",
+        device,
+        args.cache_dir,
+        len(training_subset),
+        len(calibration_subset),
+        len(set(dataset.categories)),
+        input_dim,
+        trainable_parameters,
+    )
+
+    training_history = []
     for epoch in range(args.epochs):
         head.train()
-        epoch_loss = 0.0
+        if device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(device)
+        epoch_started = time.perf_counter()
+        epoch_totals = {"loss": 0.0, "nll_loss": 0.0, "msm_loss": 0.0}
         num_batches = 0
-        for batch in training_loader:
+        progress = tqdm(
+            training_loader,
+            desc=f"Epoch {epoch + 1}/{args.epochs}",
+            unit="batch",
+            leave=False,
+            disable=not logger.isEnabledFor(logging.INFO),
+        )
+        for batch in progress:
             batch = {key: value.to(device) for key, value in batch.items()}
             optimizer.zero_grad(set_to_none=True)
             output = head.training_loss(batch)
             output["loss"].backward()
             torch.nn.utils.clip_grad_norm_(head.parameters(), args.grad_clip)
             optimizer.step()
-            epoch_loss += output["loss"].item()
+            batch_metrics = {
+                key: float(output[key].detach().item()) for key in epoch_totals
+            }
+            for key, value in batch_metrics.items():
+                epoch_totals[key] += value
             num_batches += 1
+            progress.set_postfix(
+                loss=f"{batch_metrics['loss']:.4f}",
+                nll=f"{batch_metrics['nll_loss']:.4f}",
+                msm=f"{batch_metrics['msm_loss']:.4f}",
+            )
+
+        epoch_seconds = time.perf_counter() - epoch_started
+        averages = {
+            key: value / max(num_batches, 1)
+            for key, value in epoch_totals.items()
+        }
+        peak_memory_mb = (
+            torch.cuda.max_memory_allocated(device) / (1024**2)
+            if device.type == "cuda"
+            else 0.0
+        )
+        epoch_record = {
+            "epoch": epoch + 1,
+            **averages,
+            "learning_rate": float(optimizer.param_groups[0]["lr"]),
+            "duration_seconds": epoch_seconds,
+            "peak_memory_mb": peak_memory_mb,
+        }
+        training_history.append(epoch_record)
         logger.info(
-            "Epoch %d/%d normal head loss: %.6f",
+            "Epoch %d/%d | loss=%.6f | nll=%.6f | msm=%.6f | lr=%.2e "
+            "| time=%.1fs | peak_mem=%.1f MB",
             epoch + 1,
             args.epochs,
-            epoch_loss / max(num_batches, 1),
+            averages["loss"],
+            averages["nll_loss"],
+            averages["msm_loss"],
+            optimizer.param_groups[0]["lr"],
+            epoch_seconds,
+            peak_memory_mb,
         )
 
     calibrator = fit_calibrator(head, calibration_loader, device)
+    logger.info(
+        "Fitted normal calibration on %d held-out images",
+        len(calibration_subset),
+    )
     output_path = Path(args.output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     checkpoint = {
@@ -224,6 +297,7 @@ def train(args):
         "cache_metadata": dataset.metadata,
         "training_indices": training_indices,
         "calibration_indices": calibration_indices,
+        "training_history": training_history,
         "package_versions": package_versions(),
     }
     torch.save(checkpoint, output_path)
@@ -235,6 +309,7 @@ def train(args):
                 "package_versions": checkpoint["package_versions"],
                 "num_training_images": training_indices.numel(),
                 "num_calibration_images": calibration_indices.numel(),
+                "training_history": training_history,
             },
             file,
             indent=2,
@@ -244,7 +319,10 @@ def train(args):
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
     train(parse_args())
 
 

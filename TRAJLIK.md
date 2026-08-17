@@ -21,6 +21,8 @@ top-level packages.
 
 Training produces a TrajLik checkpoint and a JSON training summary. Evaluation
 produces image-level and pixel-level metrics, with an optional JSON result file.
+Training logs batch progress plus epoch-level total, NLL, MSM, learning rate,
+duration, and peak GPU memory. The epoch history is also stored in both outputs.
 
 ## Requirements
 
