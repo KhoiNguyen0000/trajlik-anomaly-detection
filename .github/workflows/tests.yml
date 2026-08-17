@@ -22,9 +22,5 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run tests
-        run: |
-          python -m unittest discover \
-            -s tests \
-            -t . \
-            -p "test_*.py" \
-            -v
+        working-directory: baseline/InversionAD
+        run: python -m unittest discover -s test/unit_test -p "test_*.py" -v
