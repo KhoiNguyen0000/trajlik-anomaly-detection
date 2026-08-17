@@ -23,6 +23,7 @@ pip install -r requirements.txt
 
 ```bash
 python -m scripts.cache_trajectories --help
+python -m scripts.organize_cache --help
 python -m scripts.train_trajlik --help
 python -m scripts.evaluate_trajlik --help
 ```

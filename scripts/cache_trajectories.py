@@ -23,6 +23,7 @@ for path in (project_root, baseline_root):
 from src.backbones import get_backbone, get_backbone_feature_shape
 from src.datasets import build_dataset
 from src.denoiser import get_denoiser
+from trajlik.cache_layout import sanitize_category
 from trajlik.trajectory_projector import TrajectoryProjector
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -304,7 +305,9 @@ def cache_trajectories(config: dict, args):
         for index, source_path in enumerate(batch["filenames"]):
             category = batch["clsnames"][index]
             filename = sanitize_filename(source_path, category)
-            output_path = cache_dir / f"{filename}.pt"
+            category_dir = cache_dir / sanitize_category(category)
+            category_dir.mkdir(parents=True, exist_ok=True)
+            output_path = category_dir / f"{filename}.pt"
 
             if output_path in output_paths:
                 raise RuntimeError(
@@ -325,7 +328,7 @@ def cache_trajectories(config: dict, args):
             torch.save(output, output_path)
             cache_index.append(
                 {
-                    "file": output_path.name,
+                    "file": output_path.relative_to(cache_dir).as_posix(),
                     "source_path": source_path,
                     "category": category,
                     "split": "train",

@@ -81,8 +81,11 @@ def validate_cache(cache_dir: Path, expected_categories=None):
     assert len(cache_index) == len(cache_files), (
         "cache_index.json length does not match cached image files"
     )
-    indexed_files = {entry["file"] for entry in cache_index}
-    assert indexed_files == {path.name for path in cache_files}, (
+    indexed_files = {Path(entry["file"]).as_posix() for entry in cache_index}
+    discovered_files = {
+        path.relative_to(cache_dir).as_posix() for path in cache_files
+    }
+    assert indexed_files == discovered_files, (
         "cache_index.json does not enumerate the cache files exactly"
     )
     assert all(

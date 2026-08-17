@@ -43,11 +43,21 @@ complete config so a cache cannot silently lose its provenance.
 
 ## Output
 
-The cache directory contains one `.pt` file per image, `cache_meta.json`, and
-`cache_index.json`. The index supports provenance checks and category-balanced
-head training without loading all tensor files. With EfficientNet-B4, three
-inversion steps, and no projection, each
-`.pt` file contains:
+The cache directory groups `.pt` files by category and keeps `cache_meta.json`
+and `cache_index.json` at its root. The index supports provenance checks and
+category-balanced head training without loading all tensor files:
+
+```text
+cache/
+├── bottle/
+├── cable/
+├── metal_nut/
+├── cache_meta.json
+└── cache_index.json
+```
+
+With EfficientNet-B4, three inversion steps, and no projection, each `.pt`
+file contains:
 
 ```text
 z_0:         (272, 16, 16)
@@ -68,3 +78,17 @@ python tests/cache_trajectories_check.py \
 ```
 
 Use `--force` only when the existing cache may be overwritten.
+
+## Organize an existing flat cache
+
+Preview the moves first:
+
+```bash
+python -m scripts.organize_cache --cache_dir /path/to/cache
+```
+
+Then group the files by category and update `cache_index.json`:
+
+```bash
+python -m scripts.organize_cache --cache_dir /path/to/cache --apply
+```
