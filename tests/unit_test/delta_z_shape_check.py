@@ -1,4 +1,7 @@
 import torch
+
+import _bootstrap  # noqa: F401
+
 from src.denoiser import get_denoiser
 
 denoiser = get_denoiser(

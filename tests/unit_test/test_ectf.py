@@ -2,8 +2,8 @@ import unittest
 
 import torch
 
-from src.ectf import EndpointConditionedTrajectoryFlow
-from src.ectf.splines import rational_quadratic_spline
+from ectf import EndpointConditionedTrajectoryFlow
+from ectf.splines import rational_quadratic_spline
 
 
 class RationalQuadraticSplineTest(unittest.TestCase):

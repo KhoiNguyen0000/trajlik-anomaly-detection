@@ -1,6 +1,8 @@
 import copy
 import unittest
 
+import _bootstrap  # noqa: F401
+
 from src.reproducibility import compare_checkpoint_config, validate_main_protocol
 
 

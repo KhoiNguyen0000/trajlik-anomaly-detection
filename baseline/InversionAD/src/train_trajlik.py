@@ -10,15 +10,19 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from src.dcte import DCTE, MSMLoss
-from src.ectf import EndpointConditionedTrajectoryFlow
-from src.normal_tail import EmpiricalTailCalibrator
-from src.trajectory_cache_dataset import (
+from src.project_root import add_project_root_to_path
+
+add_project_root_to_path()
+
+from dcte import DCTE, MSMLoss
+from ectf import EndpointConditionedTrajectoryFlow
+from normal_tail import EmpiricalTailCalibrator
+from trajectory_cache_dataset import (
     TrajectoryCacheDataset,
     balanced_category_sampler,
     stratified_normal_split,
 )
-from src.trajlik import TrajLikHead
+from trajlik import TrajLikHead
 
 
 logger = logging.getLogger(__name__)

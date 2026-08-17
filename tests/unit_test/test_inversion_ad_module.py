@@ -3,6 +3,8 @@ import unittest
 import torch
 from torch import nn
 
+import _bootstrap  # noqa: F401
+
 from src.inversion_ad_module import InversionADModule
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import torch
 
-from src.trajectory_cache_dataset import (
+from trajectory_cache_dataset import (
     TrajectoryCacheDataset,
     balanced_category_sampler,
     stratified_normal_split,

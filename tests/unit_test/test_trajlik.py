@@ -3,10 +3,10 @@ import unittest
 import torch
 from torch import nn
 
-from src.dcte import DCTE, MSMLoss
-from src.ectf import EndpointConditionedTrajectoryFlow
-from src.normal_tail import EmpiricalTailCalibrator
-from src.trajlik import TrajLikAD, TrajLikHead
+from dcte import DCTE, MSMLoss
+from ectf import EndpointConditionedTrajectoryFlow
+from normal_tail import EmpiricalTailCalibrator
+from trajlik import TrajLikAD, TrajLikHead
 
 
 def build_head():

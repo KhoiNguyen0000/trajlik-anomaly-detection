@@ -2,6 +2,8 @@ import unittest
 
 import numpy as np
 
+import _bootstrap  # noqa: F401
+
 from src.adeval.eval_utils import calculate_img_metrics, calculate_px_metrics
 
 

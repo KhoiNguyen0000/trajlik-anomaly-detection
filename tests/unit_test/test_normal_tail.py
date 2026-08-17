@@ -3,7 +3,7 @@ import unittest
 
 import torch
 
-from src.normal_tail import (
+from normal_tail import (
     EmpiricalTailCalibrator,
     normal_kfold_indices,
     normal_train_calibration_split,

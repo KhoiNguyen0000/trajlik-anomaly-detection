@@ -19,7 +19,11 @@ from src.denoiser import get_denoiser
 from src.inversion_ad_module import InversionADModule
 from src.reproducibility import compare_checkpoint_config, validate_main_protocol
 from src.train_trajlik import load_trajlik_checkpoint
-from src.trajlik import TrajLikAD
+from src.project_root import add_project_root_to_path
+
+add_project_root_to_path()
+
+from trajlik import TrajLikAD
 
 
 logger = logging.getLogger(__name__)

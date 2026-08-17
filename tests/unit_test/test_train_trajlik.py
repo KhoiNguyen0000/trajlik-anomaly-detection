@@ -6,6 +6,8 @@ from pathlib import Path
 
 import torch
 
+import _bootstrap  # noqa: F401
+
 from src.train_trajlik import load_trajlik_checkpoint, train
 
 

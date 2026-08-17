@@ -6,6 +6,8 @@ from pathlib import Path
 from PIL import Image
 from torchvision import transforms
 
+import _bootstrap  # noqa: F401
+
 from src.datasets.mpdd import MPDD, MPDD_CLASSES
 from src.datasets.mvtec_ad import AD_CLASSES, MVTecAD
 from src.datasets.visa import VISA_CLASSES, VisA

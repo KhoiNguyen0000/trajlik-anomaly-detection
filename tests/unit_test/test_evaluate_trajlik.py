@@ -1,6 +1,8 @@
 import copy
 import unittest
 
+import _bootstrap  # noqa: F401
+
 from src.evaluate_trajlik import config_fingerprint, validate_runtime_contract
 
 

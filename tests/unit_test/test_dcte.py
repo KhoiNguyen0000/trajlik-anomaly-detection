@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from src.dcte import DCTE, MSMLoss
+from dcte import DCTE, MSMLoss
 
 
 class DCTETest(unittest.TestCase):

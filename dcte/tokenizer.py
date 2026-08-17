@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from src.trajectory_batch import build_trajectory_batch
+from trajectory_batch import build_trajectory_batch
 
 
 class TrajectoryTokenizer(nn.Module):

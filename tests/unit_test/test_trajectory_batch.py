@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from src.trajectory_batch import build_trajectory_batch
+from trajectory_batch import build_trajectory_batch
 
 
 class TrajectoryBatchTest(unittest.TestCase):

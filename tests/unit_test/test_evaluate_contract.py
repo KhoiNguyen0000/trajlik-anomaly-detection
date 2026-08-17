@@ -6,6 +6,8 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
+import _bootstrap  # noqa: F401
+
 from src.evaluate import (
     concat_all_gather,
     inversion_endpoint_outputs,

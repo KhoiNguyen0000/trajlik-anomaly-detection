@@ -1,5 +1,7 @@
 import unittest
 
+import _bootstrap  # noqa: F401
+
 from src.train_distributed import DistributedEvalSampler
 
 
