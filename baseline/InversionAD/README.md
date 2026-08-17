@@ -38,34 +38,6 @@ For pip installation, you can install the required packages with:
 pip install -r requirements.txt
 ```
 
-Before locking InvAD reproduction, audit the exact config, pinned package
-versions, dataset path, checkpoint path, git commit, and dirty state:
-
-```bash
-python scripts/check_reproducibility.py \
-    --config configs/exp_dit_ad/all.yml \
-    --checkpoint /path/to/model.pth \
-    --output reproducibility_report.json
-```
-
-After caching and training the TrajLik head, run the complete frozen-InvAD,
-DCTE, ECTF, normal-tail fusion, and official metric pipeline with:
-
-```bash
-python -m src.evaluate_trajlik \
-    --config configs/exp_dit_ad/all.yml \
-    --invad_checkpoint /path/to/model.pth \
-    --trajlik_checkpoint results/trajlik/head.pth \
-    --output_json results/trajlik/metrics.json
-```
-
-Evaluation never refits calibration and rejects mismatched configs, projected
-head caches, non-normal cache provenance, or anything other than three NFE.
-
-Main normal-only runs use the fixed final/EMA InvAD checkpoint. Periodic test
-metrics are reporting-only: training never writes a "best" checkpoint selected
-from anomaly labels.
-
 ### Set up for Evaluation
 To run the evaluation, you need to install the `adeval` package. You can do this by running the following command:
 

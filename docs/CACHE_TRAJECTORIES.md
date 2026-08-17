@@ -1,0 +1,70 @@
+# Trajectory Cache
+
+This script creates normal-image DDIM trajectories from a trained InvAD model
+for use by TrajLik-AD. It extracts EfficientNet features and caches `z_0`,
+`z_seq`, `eps_seq`, and `delta_z_seq` for each training image.
+Every sample is also marked with `split=train` and `is_normal=true`; the
+validator uses these fields instead of dataset-specific path conventions.
+
+## Inputs
+
+- An InvAD YAML config containing the dataset path and model architecture.
+- A matching checkpoint, selected with either `--save_dir` or
+  `--checkpoint_path`.
+- The normal training split of the dataset.
+
+## Usage
+
+Run from the project root.
+
+Smoke test on eight images using the EMA checkpoint:
+
+```bash
+python -m scripts.cache_trajectories \
+    --config baseline/InversionAD/configs/exp_dit_ad/all.yml \
+    --checkpoint_path /path/to/checkpoint.pth \
+    --cache_dir /kaggle/working/cache_smoke \
+    --batch_size 1 \
+    --max_images 8 \
+    --force
+```
+
+For a full run, remove `--max_images` and change `--cache_dir`. To use a
+To select an EMA checkpoint from a training directory instead, replace
+`--checkpoint_path` with:
+
+```bash
+--save_dir /path/to/training/results --use_ema_model
+```
+
+The config architecture must match the checkpoint architecture.
+The metadata records the preprocessing mode and a SHA-256 fingerprint of the
+complete config so a cache cannot silently lose its provenance.
+
+## Output
+
+The cache directory contains one `.pt` file per image, `cache_meta.json`, and
+`cache_index.json`. The index supports provenance checks and category-balanced
+head training without loading all tensor files. With EfficientNet-B4, three
+inversion steps, and no projection, each
+`.pt` file contains:
+
+```text
+z_0:         (272, 16, 16)
+z_seq:       (3, 272, 16, 16)
+eps_seq:     (3, 272, 16, 16)
+delta_z_seq: (3, 272, 16, 16)
+a_end_coarse: (16, 16)
+```
+
+`a_end_coarse` is always computed from the original, unprojected final latent.
+This preserves the official InvAD endpoint score when projection caching is on.
+
+## Validation
+
+```bash
+python tests/cache_trajectories_check.py \
+    --cache_dir /kaggle/working/cache_val
+```
+
+Use `--force` only when the existing cache may be overwritten.

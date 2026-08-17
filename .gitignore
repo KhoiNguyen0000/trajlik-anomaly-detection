@@ -1,3 +1,11 @@
 .env
 TrajLik_AD_Team_Implementation.pdf
 tmp/*
+.idea/
+__pycache__/
+*.py[cod]
+*.pth
+*.pt
+data/
+results/
+cache*/
