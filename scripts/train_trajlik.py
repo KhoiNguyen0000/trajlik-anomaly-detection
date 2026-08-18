@@ -186,7 +186,7 @@ def average_metrics(totals, total_weight):
 
 @torch.no_grad()
 def evaluate_head(head, loader, device, *, seed):
-    """Evaluate masked normal NLL/MSM with a repeatable validation mask."""
+    """Evaluate full-trajectory NLL and repeatable masked-step MSM."""
 
     head.eval()
     totals = {
@@ -208,9 +208,26 @@ def evaluate_head(head, loader, device, *, seed):
             torch.cuda.manual_seed(seed)
         for batch in loader:
             batch = {key: value.to(device) for key, value in batch.items()}
-            output = head.training_loss(batch)
-            weight = output["path_nll"].numel()
-            for key, value in output_metrics(output).items():
+            full_output = head(batch, mask=False)
+            masked_output = head.training_loss(batch)
+
+            nll_loss = full_output["path_nll"].mean()
+            msm_loss = masked_output["msm_loss"]
+            base_nll = 0.5 * (
+                full_output["base_latents"].square()
+                + math.log(2.0 * math.pi)
+            ).sum(dim=-1).mean()
+            metrics = {
+                "loss": float(
+                    (nll_loss + head.lambda_msm * msm_loss).detach().item()
+                ),
+                "nll_loss": float(nll_loss.detach().item()),
+                "msm_loss": float(msm_loss.detach().item()),
+                "base_nll": float(base_nll.detach().item()),
+                "log_det": float(full_output["log_det"].mean().detach().item()),
+            }
+            weight = full_output["path_nll"].numel()
+            for key, value in metrics.items():
                 totals[key] += value * weight
             total_weight += weight
     return average_metrics(totals, total_weight)

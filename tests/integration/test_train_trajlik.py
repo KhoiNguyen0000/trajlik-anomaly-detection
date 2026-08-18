@@ -6,10 +6,47 @@ from pathlib import Path
 
 import torch
 
-from scripts.train_trajlik import load_trajlik_checkpoint, train
+from scripts.train_trajlik import evaluate_head, load_trajlik_checkpoint, train
 
 
 class TrainTrajLikSmokeTest(unittest.TestCase):
+    def test_validation_uses_full_nll_and_a_separate_masked_msm_pass(self):
+        class TrackingHead:
+            lambda_msm = 2.0
+
+            def __init__(self):
+                self.masks = []
+                self.masked_passes = 0
+
+            def eval(self):
+                return self
+
+            def __call__(self, batch, *, mask):
+                self.masks.append(mask)
+                return {
+                    "path_nll": torch.tensor([[5.0]]),
+                    "base_latents": torch.zeros(1, 1, 2),
+                    "log_det": torch.tensor([[-3.1621229336]]),
+                }
+
+            def training_loss(self, batch):
+                self.masked_passes += 1
+                return {"msm_loss": torch.tensor(0.25)}
+
+        head = TrackingHead()
+        metrics = evaluate_head(
+            head,
+            [{"sample": torch.zeros(1)}],
+            torch.device("cpu"),
+            seed=42,
+        )
+
+        self.assertEqual(head.masks, [False])
+        self.assertEqual(head.masked_passes, 1)
+        self.assertAlmostEqual(metrics["nll_loss"], 5.0)
+        self.assertAlmostEqual(metrics["msm_loss"], 0.25)
+        self.assertAlmostEqual(metrics["loss"], 5.5)
+
     def _write_cache(self, root):
         index = []
         for sample_index in range(4):

@@ -21,7 +21,8 @@ top-level packages.
 
 Training reserves 5% of normal images for validation and another untouched 5%
 for score calibration. It selects the best head and performs early stopping only
-from normal validation NLL. Evaluation produces image-level and pixel-level
+from full-trajectory normal validation NLL (`mask=False`). Masked validation is
+run separately to monitor MSM. Evaluation produces image-level and pixel-level
 metrics, with an optional JSON result file.
 
 Training writes `head.pth` (the calibrated best head), `head_best.pth`,
